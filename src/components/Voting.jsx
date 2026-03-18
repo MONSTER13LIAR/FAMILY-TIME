@@ -48,9 +48,9 @@ const Voting = ({ players, myPlayerId, hints, onVote, hasVoted }) => {
                     )}
                     <div className="flex items-center gap-3 md:gap-4 mb-3 md:mb-4">
                       <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border-2 shadow-inner transition-colors ${selectedId === p.id ? 'bg-blue-500 border-blue-400' : 'bg-slate-800 border-slate-700'}`}>
-                         <span className="text-base md:text-xl font-black text-white">{p.name.substring(0, 2).toUpperCase()}</span>
+                         <span className="text-base md:text-xl font-black text-white">{p.name?.substring(0, 2).toUpperCase() || "??"}</span>
                       </div>
-                      <span className={`text-lg md:text-2xl font-black truncate max-w-[150px] transition-colors ${selectedId === p.id ? 'text-white' : 'text-slate-200'}`}>{p.name}</span>
+                      <span className={`text-lg md:text-2xl font-black truncate max-w-[150px] transition-colors ${selectedId === p.id ? 'text-white' : 'text-slate-200'}`}>{p.name || "Unknown"}</span>
                     </div>
 
                     <div className={`w-full p-3 md:p-4 rounded-xl md:rounded-2xl border transition-colors shadow-inner ${selectedId === p.id ? 'bg-blue-900/40 border-blue-800' : 'bg-slate-950/60 border-white/5'}`}>

@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import { sounds } from '../utils/soundManager';
 
-const Game = ({ players, myPlayerId, isHost, word, isImpostor, turnIndex, hints, gameState, onProvideHint, onStartVoting }) => {
+const Game = ({ players, myPlayerId, isHost, word, isImpostor, turnIndex, hints, gameState, onProvideHint, onStartVoting, onNextRoundHints }) => {
   const [myHint, setMyHint] = useState('');
   
   const currentPlayer = players[turnIndex];
   const isMyTurn = currentPlayer?.id === myPlayerId;
   const isRoundComplete = gameState === 'round_complete';
   
-  const playingPlayers = players.filter(p => p.isPlayingThisRound);
-  const currentRoundNum = Math.floor(hints.length / playingPlayers.length) + 1;
-  const lastHintIndexInPrevRound = (currentRoundNum - 1) * playingPlayers.length;
+  const playingPlayers = players.filter(p => p.isPlayingThisRound) || [];
+  const playerCount = playingPlayers.length || 1;
+  const safeHintsLength = hints?.length || 0;
+  const currentRoundNum = Math.floor(safeHintsLength / playerCount) + 1;
+  const lastHintIndexInPrevRound = (currentRoundNum - 1) * playerCount;
 
   const handleSubmit = (e) => {
     if (e) e.preventDefault();
@@ -129,7 +131,7 @@ const Game = ({ players, myPlayerId, isHost, word, isImpostor, turnIndex, hints,
 
                   {/* Manual Vote Button for Host at round boundaries */}
                   {isHost && hints.length > 0 && 
-                   hints.length % players.filter(p => p.isPlayingThisRound).length === 0 && (
+                   hints.length % (players.filter(p => p.isPlayingThisRound).length || 1) === 0 && (
                     <div className="mt-8 md:mt-12 w-full max-w-lg animate-fade-in">
                         <div className="h-px bg-white/10 w-full mb-8"></div>
                         <button 
@@ -196,7 +198,7 @@ const Game = ({ players, myPlayerId, isHost, word, isImpostor, turnIndex, hints,
                    : 'text-slate-400 bg-white/5 border-white/5'
                }`}>
                   <div className={`w-2 h-2 md:w-3 md:h-3 rounded-full ${hints.slice(lastHintIndexInPrevRound).some(h => h.playerId === p.id) ? 'bg-teal-500 shadow-[0_0_10px_rgba(45,212,191,0.8)]' : 'bg-slate-700'}`}></div>
-                  <span className="font-black uppercase tracking-wider text-[10px] md:text-sm whitespace-nowrap">{p.name} {p.id === myPlayerId && '(You)'}</span>
+                  <span className="font-black uppercase tracking-wider text-[10px] md:text-sm whitespace-nowrap">{p?.name || 'Unknown'} {p.id === myPlayerId && '(You)'}</span>
                </div>
             ))}
           </div>

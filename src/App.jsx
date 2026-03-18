@@ -40,11 +40,19 @@ function App() {
   useEffect(() => {
     const saved = localStorage.getItem('session');
     if (saved) {
-      const { roomCode: savedCode, playerName: savedName } = JSON.parse(saved);
-      if (savedCode && savedName) {
-        setRoomCode(savedCode);
-        setPlayerName(savedName);
-        socket.emit('rejoin_room', { roomCode: savedCode, playerName: savedName });
+      try {
+        const session = JSON.parse(saved);
+        if (session && typeof session === 'object') {
+          const { roomCode: savedCode, playerName: savedName } = session;
+          if (savedCode && savedName) {
+            setRoomCode(savedCode);
+            setPlayerName(savedName);
+            socket.emit('rejoin_room', { roomCode: savedCode, playerName: savedName });
+          }
+        }
+      } catch (e) {
+        console.error("Session rejoin failed:", e);
+        localStorage.removeItem('session');
       }
     }
   }, []);
@@ -62,7 +70,14 @@ function App() {
       setScreen('room');
       
       // Save session
-      const savedName = playerName || JSON.parse(localStorage.getItem('session') || '{}').playerName;
+      let savedName = playerName;
+      if (!savedName) {
+        try {
+          savedName = JSON.parse(localStorage.getItem('session') || '{}').playerName;
+        } catch (e) {
+          savedName = null;
+        }
+      }
       if (savedName) {
         localStorage.setItem('session', JSON.stringify({ roomCode: joinedCode, playerName: savedName }));
       }
@@ -279,6 +294,17 @@ function App() {
           totalVotes={totalVotes}
           onNextRound={handleStartGame}
         />
+      )}
+
+      {/* Defensive Fallback for invalid screen states */}
+      {!['landing', 'lobby', 'name', 'room', 'game', 'voting', 'results'].includes(screen) && (
+        <div className="flex-1 flex flex-col items-center justify-center p-10 text-center relative z-10">
+            <h2 className="text-4xl font-black mb-6">Something went wrong</h2>
+            <div className="flex gap-4">
+               <button onClick={() => window.location.reload()} className="px-8 py-4 bg-blue-600 rounded-2xl font-black uppercase tracking-widest hover:scale-105 transition-all">Reload</button>
+               <button onClick={() => handleExitRoom()} className="px-8 py-4 bg-slate-800 rounded-2xl font-black uppercase tracking-widest hover:scale-105 transition-all">Go Home</button>
+            </div>
+        </div>
       )}
     </div>
   );
