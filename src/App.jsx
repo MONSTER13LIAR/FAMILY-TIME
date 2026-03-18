@@ -1,0 +1,287 @@
+import React, { useState, useEffect } from 'react';
+import { io } from 'socket.io-client';
+import Header from './components/Header';
+import BackgroundDecor from './components/BackgroundDecor';
+import Landing from './components/Landing';
+import Lobby from './components/Lobby';
+import NameInput from './components/NameInput';
+import Room from './components/Room';
+import Game from './components/Game';
+import Voting from './components/Voting';
+import Results from './components/Results';
+import { sounds } from './utils/soundManager';
+
+const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
+const socket = io(socketUrl);
+
+function App() {
+  const [screen, setScreen] = useState('landing');
+  const [roomCode, setRoomCode] = useState('');
+  const [playerName, setPlayerName] = useState('');
+  const [myPlayerId, setMyPlayerId] = useState('');
+  const [isHost, setIsHost] = useState(false);
+  const [players, setPlayers] = useState([]);
+  const [maxPlayers, setMaxPlayers] = useState(10);
+
+  // Game state
+  const [word, setWord] = useState('');
+  const [impostorId, setImpostorId] = useState('');
+  const [turnIndex, setTurnIndex] = useState(0);
+  const [hints, setHints] = useState([]);
+  const [votes, setVotes] = useState({});
+  const [isTie, setIsTie] = useState(false);
+  const [hasMajority, setHasMajority] = useState(true);
+  const [topVoteCount, setTopVoteCount] = useState(0);
+  const [totalVotes, setTotalVotes] = useState(0);
+  const [pointGains, setPointGains] = useState({});
+  const [gameState, setGameState] = useState('waiting');
+
+  // Handle session persistence
+  useEffect(() => {
+    const saved = localStorage.getItem('session');
+    if (saved) {
+      const { roomCode: savedCode, playerName: savedName } = JSON.parse(saved);
+      if (savedCode && savedName) {
+        setRoomCode(savedCode);
+        setPlayerName(savedName);
+        socket.emit('rejoin_room', { roomCode: savedCode, playerName: savedName });
+      }
+    }
+  }, []);
+
+  // Register socket listeners ONCE
+  useEffect(() => {
+    socket.on('connect', () => {
+      setMyPlayerId(socket.id);
+    });
+
+    socket.on('room_joined', ({ roomCode: joinedCode, isHost: hostStatus, maxPlayers: mp }) => {
+      setRoomCode(joinedCode);
+      setIsHost(hostStatus);
+      setMaxPlayers(mp || 10);
+      setScreen('room');
+      
+      // Save session
+      const savedName = playerName || JSON.parse(localStorage.getItem('session') || '{}').playerName;
+      if (savedName) {
+        localStorage.setItem('session', JSON.stringify({ roomCode: joinedCode, playerName: savedName }));
+      }
+    });
+
+    socket.on('update_players', (updatedPlayers) => {
+      setPlayers(updatedPlayers);
+    });
+
+    socket.on('game_started', () => {
+      setWord('');
+      setImpostorId('');
+      setTurnIndex(0);
+      setHints([]);
+      setVotes({});
+      setPointGains({});
+      sounds.start();
+      setScreen('game');
+    });
+
+    socket.on('assign_role', ({ word, isImpostor }) => {
+      setWord(word);
+      if (isImpostor) {
+        setImpostorId(socket.id);
+      }
+    });
+
+    socket.on('update_game_state', ({ gameState: gs, currentTurnIndex, hints, votes }) => {
+      setGameState(gs);
+      setTurnIndex(prev => {
+        if (prev !== currentTurnIndex) sounds.turn();
+        return currentTurnIndex;
+      });
+      setHints(hints);
+      setVotes(votes);
+      
+      // Sync screen based on game state
+      if (gs === 'playing' || gs === 'round_complete') {
+        setScreen('game');
+      } else if (gs === 'voting') {
+        setScreen('voting');
+      } else if (gs === 'results') {
+        setScreen('results');
+      } else if (gs === 'waiting') {
+        setScreen('room');
+      }
+    });
+
+    socket.on('start_voting', () => {
+      sounds.vote();
+      setScreen('voting');
+    });
+
+    socket.on('show_results', ({ impostorId, word, votes, pointGains, isTie, hasMajority, topVoteCount, totalVotes }) => {
+      setImpostorId(impostorId);
+      setWord(word);
+      if (votes) setVotes(votes);
+      if (pointGains) setPointGains(pointGains);
+      setIsTie(isTie || false);
+      setHasMajority(hasMajority !== false);
+      setTopVoteCount(topVoteCount || 0);
+      setTotalVotes(totalVotes || 0);
+      sounds.result();
+      setScreen('results');
+    });
+
+    socket.on('error', (message) => {
+      sounds.error();
+      if (message === 'Player not found in this room' || message === 'Room not found') {
+        localStorage.removeItem('session');
+        setScreen('landing');
+      }
+      alert(message);
+    });
+
+    return () => {
+      socket.off('connect');
+      socket.off('room_joined');
+      socket.off('update_players');
+      socket.off('game_started');
+      socket.off('assign_role');
+      socket.off('update_game_state');
+      socket.off('start_voting');
+      socket.off('show_results');
+      socket.off('error');
+    };
+  }, [playerName]); // Re-register if name changes to capture it for localStorage
+
+  const handleStartFromLanding = () => setScreen('lobby');
+
+  const handleCreateRoom = () => {
+    setScreen('name');
+    setIsHost(true);
+  };
+
+  const handleJoinRoom = (code) => {
+    setRoomCode(code);
+    setIsHost(false);
+    setScreen('name');
+  };
+
+  const handleNameContinue = (name, maxPlayers) => {
+    setPlayerName(name);
+    if (isHost) {
+      socket.emit('create_room', { name, maxPlayers });
+    } else {
+      socket.emit('join_room', { code: roomCode, name });
+    }
+  };
+
+  const handleExitRoom = () => {
+    sounds.click();
+    socket.emit('leave_room', roomCode);
+    localStorage.removeItem('session');
+    setRoomCode('');
+    setPlayerName('');
+    setIsHost(false);
+    setPlayers([]);
+    setScreen('landing');
+  };
+
+  const handleAddBot = () => {
+    sounds.click();
+    socket.emit('add_bot', roomCode);
+  };
+
+  const handleStartGame = () => {
+    sounds.click();
+    socket.emit('start_game', roomCode);
+  };
+
+  const handleProvideHint = (hint) => {
+    sounds.click();
+    socket.emit('submit_hint', { roomCode, hint });
+  };
+
+  const handleStartVoting = () => {
+    sounds.click();
+    socket.emit('start_voting', roomCode);
+  };
+
+  const handleVote = (votedId) => {
+    sounds.click();
+    socket.emit('submit_vote', { roomCode, votedId });
+  };
+
+  const handleNextRoundHints = () => {
+    sounds.click();
+    socket.emit('next_round_hints', roomCode);
+  };
+
+  return (
+    <div className="min-h-screen w-full bg-slate-950 text-slate-100 flex flex-col selection:bg-teal-500/30 font-sans scroll-smooth">
+      <BackgroundDecor />
+      <Header 
+        onExitRoom={handleExitRoom} 
+        inRoom={['room', 'game', 'voting', 'results'].includes(screen)} 
+      />
+
+      {screen === 'landing' && <Landing onStart={handleStartFromLanding} />}
+      {screen === 'lobby' && <Lobby onCreateRoom={handleCreateRoom} onJoinRoom={handleJoinRoom} onBack={() => setScreen('landing')} />}
+      {screen === 'name' && <NameInput isHost={isHost} onContinue={handleNameContinue} onBack={() => setScreen('lobby')} />}
+
+      {screen === 'room' && (
+        <Room
+          roomCode={roomCode}
+          isHost={isHost}
+          players={players}
+          myPlayerId={socket.id}
+          maxPlayers={maxPlayers}
+          onStartGame={handleStartGame}
+          onLeave={handleExitRoom}
+          onAddBot={handleAddBot}
+        />
+      )}
+
+      {screen === 'game' && (
+        <Game
+          players={players}
+          myPlayerId={socket.id}
+          isHost={isHost}
+          word={word}
+          isImpostor={socket.id === impostorId}
+          turnIndex={turnIndex}
+          hints={hints}
+          gameState={gameState}
+          onProvideHint={handleProvideHint}
+          onStartVoting={handleStartVoting}
+          onNextRoundHints={handleNextRoundHints}
+        />
+      )}
+
+      {screen === 'voting' && (
+        <Voting
+          players={players}
+          myPlayerId={socket.id}
+          hints={hints}
+          hasVoted={!!votes[socket.id]}
+          onVote={handleVote}
+        />
+      )}
+
+      {screen === 'results' && (
+        <Results
+          players={players}
+          impostorId={impostorId}
+          word={word}
+          votes={votes}
+          pointGains={pointGains}
+          isHost={isHost}
+          isTie={isTie}
+          hasMajority={hasMajority}
+          topVoteCount={topVoteCount}
+          totalVotes={totalVotes}
+          onNextRound={handleStartGame}
+        />
+      )}
+    </div>
+  );
+}
+
+export default App;
