@@ -42,6 +42,9 @@ const PlayerList = ({ players, myPlayerId, highlightId, children }) => {
                 {player.isPlayingThisRound === false && (
                   <span className="px-1.5 py-0.5 bg-rose-500/20 text-rose-400 text-[8px] sm:text-[10px] font-black uppercase tracking-widest rounded-md border border-rose-500/30 shrink-0">Specs</span>
                 )}
+                {player.isDisconnected && (
+                  <span className="px-1.5 py-0.5 bg-slate-900/50 text-slate-500 text-[8px] sm:text-[10px] font-black uppercase tracking-widest rounded-md border border-white/5 shrink-0 animate-pulse">Offline</span>
+                )}
               </div>
               {myPlayerId === player.id && (
                 <span className="text-[10px] sm:text-xs text-slate-500 font-medium mt-0.5 uppercase tracking-widest leading-none">You</span>

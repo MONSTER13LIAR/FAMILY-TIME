@@ -12,7 +12,12 @@ import Results from './components/Results';
 import { sounds } from './utils/soundManager';
 
 const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
-const socket = io(socketUrl);
+const socket = io(socketUrl, {
+  transports: ["websocket"], // Priority to websocket for production
+  reconnection: true,
+  reconnectionAttempts: 10,
+  reconnectionDelay: 2000
+});
 
 function App() {
   const [screen, setScreen] = useState('landing');
@@ -36,25 +41,29 @@ function App() {
   const [pointGains, setPointGains] = useState({});
   const [gameState, setGameState] = useState('waiting');
 
-  // Handle session persistence
+  // Handle session persistence + Reconnect rejoining
   useEffect(() => {
-    const saved = localStorage.getItem('session');
-    if (saved) {
-      try {
-        const session = JSON.parse(saved);
-        if (session && typeof session === 'object') {
-          const { roomCode: savedCode, playerName: savedName } = session;
-          if (savedCode && savedName) {
-            setRoomCode(savedCode);
-            setPlayerName(savedName);
-            socket.emit('rejoin_room', { roomCode: savedCode, playerName: savedName });
+    const handleRejoin = () => {
+      const saved = localStorage.getItem('session');
+      if (saved) {
+        try {
+          const session = JSON.parse(saved);
+          if (session && typeof session === 'object') {
+            const { roomCode: savedCode, playerName: savedName } = session;
+            if (savedCode && savedName) {
+              setRoomCode(savedCode);
+              setPlayerName(savedName);
+              socket.emit('rejoin_room', { roomCode: savedCode, playerName: savedName });
+            }
           }
-        }
-      } catch (e) {
-        console.error("Session rejoin failed:", e);
-        localStorage.removeItem('session');
+        } catch (e) {}
       }
-    }
+    };
+
+    socket.on('connect', handleRejoin);
+    handleRejoin(); // Check on mount too
+
+    return () => socket.off('connect', handleRejoin);
   }, []);
 
   // Register socket listeners ONCE

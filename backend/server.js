@@ -9,7 +9,7 @@ app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*", // allow frontend to connect
+    origin: "*", // Restricted in deployment, but allowing * for easy global initial test
     methods: ["GET", "POST"]
   }
 });
@@ -46,7 +46,8 @@ const createPlayer = (id, name, isHost = false) => ({
   isHost,
   isImpostor: false,
   isBot: false,
-  isPlayingThisRound: true
+  isPlayingThisRound: true,
+  isDisconnected: false
 });
 
 io.on('connection', (socket) => {
@@ -141,6 +142,7 @@ io.on('connection', (socket) => {
       if (player) {
         // Update player ID and rejoin room
         player.id = socket.id;
+        player.isDisconnected = false;
         socket.join(roomCode);
         
         // If there are no other humans, may need to reassign host
@@ -506,6 +508,7 @@ io.on('connection', (socket) => {
       const room = rooms[roomCode];
       const playerIndex = room.players.findIndex(p => p.id === socket.id);
       if (playerIndex > -1) {
+        const player = room.players[playerIndex];
         // If in waiting or results, safe to remove
         if (room.gameState === 'waiting' || room.gameState === 'results') {
           room.players.splice(playerIndex, 1);
@@ -516,8 +519,24 @@ io.on('connection', (socket) => {
             delete rooms[roomCode];
           }
         } else {
-          // In active game, keep them for rejoin
-          console.log(`Player ${room.players[playerIndex].name} disconnected during active game in ${roomCode}`);
+          // In active game, keep them but mark as disconnected
+          player.isDisconnected = true;
+          io.to(roomCode).emit('update_players', room.players);
+          
+          // Force removal if they don't reconnect in 10 minutes
+          setTimeout(() => {
+             const currentRoom = rooms[roomCode];
+             if (currentRoom) {
+               const pIdx = currentRoom.players.findIndex(p => p.name === player.name && p.isDisconnected);
+               if (pIdx > -1) {
+                 currentRoom.players.splice(pIdx, 1);
+                 io.to(roomCode).emit('update_players', currentRoom.players);
+                 if (currentRoom.players.length === 0) {
+                   delete rooms[roomCode];
+                 }
+               }
+             }
+          }, 600000); // 10 minutes
         }
       }
     }
