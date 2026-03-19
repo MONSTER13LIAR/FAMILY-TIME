@@ -11,7 +11,7 @@ import Voting from './components/Voting';
 import Results from './components/Results';
 import { sounds } from './utils/soundManager';
 
-const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
+const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
 const socket = io(socketUrl, {
   transports: ["websocket"], // Priority to websocket for production
   reconnection: true,
@@ -56,7 +56,7 @@ function App() {
               socket.emit('rejoin_room', { roomCode: savedCode, playerName: savedName });
             }
           }
-        } catch (e) {}
+        } catch (e) { }
       }
     };
 
@@ -77,7 +77,7 @@ function App() {
       setIsHost(hostStatus);
       setMaxPlayers(mp || 10);
       setScreen('room');
-      
+
       // Save session
       let savedName = playerName;
       if (!savedName) {
@@ -122,7 +122,7 @@ function App() {
       });
       setHints(hints);
       setVotes(votes);
-      
+
       // Sync screen based on game state
       if (gs === 'playing' || gs === 'round_complete') {
         setScreen('game');
@@ -241,9 +241,9 @@ function App() {
   return (
     <div className="min-h-screen w-full bg-slate-950 text-slate-100 flex flex-col selection:bg-teal-500/30 font-sans scroll-smooth">
       <BackgroundDecor />
-      <Header 
-        onExitRoom={handleExitRoom} 
-        inRoom={['room', 'game', 'voting', 'results'].includes(screen)} 
+      <Header
+        onExitRoom={handleExitRoom}
+        inRoom={['room', 'game', 'voting', 'results'].includes(screen)}
       />
 
       {screen === 'landing' && <Landing onStart={handleStartFromLanding} />}
@@ -308,11 +308,11 @@ function App() {
       {/* Defensive Fallback for invalid screen states */}
       {!['landing', 'lobby', 'name', 'room', 'game', 'voting', 'results'].includes(screen) && (
         <div className="flex-1 flex flex-col items-center justify-center p-10 text-center relative z-10">
-            <h2 className="text-4xl font-black mb-6">Something went wrong</h2>
-            <div className="flex gap-4">
-               <button onClick={() => window.location.reload()} className="px-8 py-4 bg-blue-600 rounded-2xl font-black uppercase tracking-widest hover:scale-105 transition-all">Reload</button>
-               <button onClick={() => handleExitRoom()} className="px-8 py-4 bg-slate-800 rounded-2xl font-black uppercase tracking-widest hover:scale-105 transition-all">Go Home</button>
-            </div>
+          <h2 className="text-4xl font-black mb-6">Something went wrong</h2>
+          <div className="flex gap-4">
+            <button onClick={() => window.location.reload()} className="px-8 py-4 bg-blue-600 rounded-2xl font-black uppercase tracking-widest hover:scale-105 transition-all">Reload</button>
+            <button onClick={() => handleExitRoom()} className="px-8 py-4 bg-slate-800 rounded-2xl font-black uppercase tracking-widest hover:scale-105 transition-all">Go Home</button>
+          </div>
         </div>
       )}
     </div>
