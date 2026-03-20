@@ -473,37 +473,35 @@ io.on('connection', (socket) => {
       
       const pointGains = {}; // { playerId: { points: number, reason: string } }
 
-      // SCORING LOGIC
+      // SCORING LOGIC - New Nuanced System
       if (impostor) {
+        const correctVoters = playingPlayers.filter(p => !p.isImpostor && room.votes[p.id] === impostor.id);
+        const incorrectVoters = playingPlayers.filter(p => !p.isImpostor && room.votes[p.id] !== impostor.id);
+        const allVotedCorrectly = (incorrectVoters.length === 0);
+
         if (impostorVotedOut) {
-          // Players Win (Majority)
-          Object.entries(room.votes).forEach(([voterId, votedId]) => {
-            if (votedId === impostor.id && voterId !== impostor.id) {
-              const voter = room.players.find(p => p.id === voterId);
-              if (voter && voter.isPlayingThisRound) {
-                voter.score += 20;
-                pointGains[voterId] = { points: 20, reason: "Caught Impostor!" };
-              }
-            }
-          });
-        } else if (isTie) {
-          // Tie (Some votes but no majority)
-          impostor.score += 15;
-          pointGains[impostor.id] = { points: 15, reason: "Survived Tie" };
-          
-          Object.entries(room.votes).forEach(([voterId, votedId]) => {
-            if (votedId === impostor.id && voterId !== impostor.id) {
-              const voter = room.players.find(p => p.id === voterId);
-              if (voter && voter.isPlayingThisRound) {
-                voter.score += 10;
-                pointGains[voterId] = { points: 10, reason: "Voted Correctly" };
-              }
-            }
-          });
+          if (allVotedCorrectly) {
+            // CASE 1: ALL players vote the impostor correctly
+            correctVoters.forEach(voter => {
+              voter.score += 20;
+              pointGains[voter.id] = { points: 20, reason: "Unanimous!" };
+            });
+            // Impostor gets 0
+          } else {
+            // CASE 2: Impostor is correctly identified BUT not unanimously
+            correctVoters.forEach(voter => {
+              voter.score += 20;
+              pointGains[voter.id] = { points: 20, reason: "Voted Correctly" };
+            });
+            // incorrectVoters get 0 points
+            impostor.score += 6; // SMALL points (30% of 20)
+            pointGains[impostor.id] = { points: 6, reason: "Deceived Some" };
+          }
         } else {
-          // Impostor Won (Zero votes)
+          // CASE 3: Impostor is NOT caught
           impostor.score += 20;
-          pointGains[impostor.id] = { points: 20, reason: "Perfect Win!" };
+          pointGains[impostor.id] = { points: 20, reason: "Undetected!" };
+          // All other players receive 0 points
         }
       }
 
