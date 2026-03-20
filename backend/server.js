@@ -68,9 +68,12 @@ io.on('connection', (socket) => {
       gameState: 'waiting',
       word: '',
       usedWords: [],
+      usedImpostors: [],
       currentTurnIndex: 0,
       hints: [],
-      votes: {}
+      votes: {},
+      roundEnded: false, // Part 1: State flag
+      votingPhase: false // Part 1: State flag
     };
     
     socket.join(roomCode);
@@ -195,6 +198,8 @@ io.on('connection', (socket) => {
     if (room && room.hostId === socket.id && (room.gameState === 'playing' || room.gameState === 'round_complete')) {
       if (room.hints.length >= playingPlayers.length) {
         room.gameState = 'voting';
+        room.votingPhase = true;
+        room.roundEnded = false;
         io.to(roomCode).emit('start_voting');
         handleBotVotes(roomCode);
       }
@@ -217,6 +222,8 @@ io.on('connection', (socket) => {
       room.word = randomWord;
       room.usedWords.push(randomWord);
       room.gameState = 'playing';
+      room.roundEnded = false;
+      room.votingPhase = false;
       room.currentTurnIndex = 0;
       room.hints = [];
       room.votes = {};
@@ -226,14 +233,27 @@ io.on('connection', (socket) => {
       // Shuffle logic
       room.players.sort(() => Math.random() - 0.5);
       
+      // Requirement 1: Fair Impostor Rotation
+      // 1. eligiblePlayers = players who are NOT in usedImpostors
+      let eligiblePlayers = room.players.filter(p => !room.usedImpostors.includes(p.name));
+
+      // 2. If eligiblePlayers is empty (all players have been impostor once): Reset usedImpostors = []
+      if (eligiblePlayers.length === 0) {
+        room.usedImpostors = [];
+        eligiblePlayers = [...room.players];
+      }
+
+      // 3. Randomly select impostor from eligiblePlayers
+      const selectedImpostor = eligiblePlayers[Math.floor(Math.random() * eligiblePlayers.length)];
+
+      // 4. Update isImpostor for all players
       room.players.forEach(p => {
+        p.isImpostor = (p === selectedImpostor);
         p.isPlayingThisRound = true;
       });
 
-      const impostorIndex = Math.floor(Math.random() * room.players.length);
-      room.players.forEach((p, idx) => {
-        p.isImpostor = (idx === impostorIndex);
-      });
+      // 5. Add selected player to usedImpostors
+      room.usedImpostors.push(selectedImpostor.name);
 
       io.to(roomCode).emit('update_players', room.players);
       io.to(roomCode).emit('game_started');
@@ -251,7 +271,9 @@ io.on('connection', (socket) => {
          gameState: room.gameState,
          currentTurnIndex: room.currentTurnIndex,
          hints: room.hints,
-         votes: room.votes
+         votes: room.votes,
+         roundEnded: room.roundEnded,
+         votingPhase: room.votingPhase
       });
       
       handleBotTurn(roomCode);
@@ -363,7 +385,9 @@ io.on('connection', (socket) => {
            gameState: room.gameState,
            currentTurnIndex: room.currentTurnIndex,
            hints: room.hints,
-           votes: room.votes
+           votes: room.votes,
+           roundEnded: room.roundEnded,
+           votingPhase: room.votingPhase
         });
 
         // Continue to bot if applicable (now infinite recursion is safe due to timer in handleBotTurn)
@@ -484,6 +508,8 @@ io.on('connection', (socket) => {
       }
 
       room.gameState = 'results';
+      room.roundEnded = true;
+      room.votingPhase = false;
       room.lastResults = {
         impostorId: impostor ? impostor.id : null,
         word: room.word,
@@ -495,15 +521,29 @@ io.on('connection', (socket) => {
         totalVotes
       };
       
+      io.to(roomCode).emit('update_game_state', {
+         gameState: room.gameState,
+         currentTurnIndex: room.currentTurnIndex,
+         hints: room.hints,
+         votes: room.votes,
+         roundEnded: room.roundEnded,
+         votingPhase: room.votingPhase
+      });
       io.to(roomCode).emit('show_results', room.lastResults);
       io.to(roomCode).emit('update_players', room.players);
   };
 
   socket.on('leave_room', (roomCode) => {
-    socket.leave(roomCode);
-    if (rooms[roomCode]) {
-      rooms[roomCode].players = rooms[roomCode].players.filter(p => p.id !== socket.id);
-      io.to(roomCode).emit('update_players', rooms[roomCode].players);
+    const room = rooms[roomCode];
+    if (room) {
+      // Requirement 2: No leaving mid-game
+      if (room.gameState !== 'waiting') {
+        return socket.emit('error', 'Cannot leave during an active game session.');
+      }
+      
+      socket.leave(roomCode);
+      room.players = room.players.filter(p => p.id !== socket.id);
+      io.to(roomCode).emit('update_players', room.players);
     }
   });
 
@@ -514,34 +554,20 @@ io.on('connection', (socket) => {
       const playerIndex = room.players.findIndex(p => p.id === socket.id);
       if (playerIndex > -1) {
         const player = room.players[playerIndex];
-        // If in waiting or results, safe to remove
-        if (room.gameState === 'waiting' || room.gameState === 'results') {
+        // Part 4: Prevent Room Loss
+        // Only delete in waiting if it's really the last person
+        if (room.gameState === 'waiting') {
           room.players.splice(playerIndex, 1);
           io.to(roomCode).emit('update_players', room.players);
           
-          // Cleanup empty rooms
-          if (room.players.length === 0) {
+          const remainingHumans = room.players.filter(p => !p.isBot).length;
+          if (remainingHumans === 0) {
             delete rooms[roomCode];
           }
         } else {
           // In active game, keep them but mark as disconnected
           player.isDisconnected = true;
           io.to(roomCode).emit('update_players', room.players);
-          
-          // Force removal if they don't reconnect in 10 minutes
-          setTimeout(() => {
-             const currentRoom = rooms[roomCode];
-             if (currentRoom) {
-               const pIdx = currentRoom.players.findIndex(p => p.name === player.name && p.isDisconnected);
-               if (pIdx > -1) {
-                 currentRoom.players.splice(pIdx, 1);
-                 io.to(roomCode).emit('update_players', currentRoom.players);
-                 if (currentRoom.players.length === 0) {
-                   delete rooms[roomCode];
-                 }
-               }
-             }
-          }, 600000); // 10 minutes
         }
       }
     }

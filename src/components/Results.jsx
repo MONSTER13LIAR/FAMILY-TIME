@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import PlayerList from './PlayerList';
 
-const Results = ({ players, impostorId, word, votes, pointGains, isHost, isTie, hasMajority, topVoteCount, totalVotes, onNextRound }) => {
+const Results = ({ players, impostorId, word, votes, pointGains, isHost, isTie, hasMajority, topVoteCount, totalVotes, onNextRound, roundEnded }) => {
   const impostor = players.find(p => p.id === impostorId);
   
   // Tally votes
@@ -107,7 +107,8 @@ const Results = ({ players, impostorId, word, votes, pointGains, isHost, isTie, 
             {isHost ? (
                <button 
                  onClick={onNextRound}
-                 className="w-full sm:w-auto px-10 md:px-20 py-4 md:py-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black uppercase tracking-widest rounded-xl md:rounded-full shadow-2xl transition-all duration-300 active:scale-95 text-lg md:text-2xl border-b-4 border-black/20"
+                 disabled={!roundEnded}
+                 className={`w-full sm:w-auto px-10 md:px-20 py-4 md:py-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:from-slate-800 disabled:to-slate-900 disabled:text-slate-600 text-white font-black uppercase tracking-widest rounded-xl md:rounded-full shadow-2xl transition-all duration-300 active:scale-95 text-lg md:text-2xl border-b-4 border-black/20`}
                >
                  Next Round
                </button>

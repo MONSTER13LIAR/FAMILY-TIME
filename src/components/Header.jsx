@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { setSoundEnabled, isSoundEnabled, sounds } from '../utils/soundManager';
 
-const Header = ({ onExitRoom, inRoom }) => {
+const Header = ({ onExitRoom, inRoom, isGameActive }) => {
   const [soundOn, setSoundOn] = useState(true);
 
   const toggleSound = () => {
@@ -49,7 +49,7 @@ const Header = ({ onExitRoom, inRoom }) => {
             </span>
           </div>
 
-          {inRoom && (
+          {inRoom && !isGameActive && (
             <button
               onClick={onExitRoom}
               className="px-3 py-1.5 md:px-4 md:py-2 bg-rose-500/10 border border-rose-500/30 text-rose-400 font-black text-[10px] md:text-xs uppercase tracking-widest rounded-xl hover:bg-rose-500/20 transition-all active:scale-95 shadow-lg shadow-rose-950/20"

@@ -3,6 +3,10 @@ import { sounds } from '../utils/soundManager';
 
 const Voting = ({ players, myPlayerId, hints, onVote, hasVoted }) => {
   const [selectedId, setSelectedId] = useState(null);
+  const [historyPlayerId, setHistoryPlayerId] = useState(null);
+
+  const historyPlayer = players.find(p => p.id === historyPlayerId);
+  const playerHints = historyPlayer ? hints.filter(h => h.playerId === historyPlayer.id) : [];
 
   const handleVoteClick = () => {
     if (selectedId) {
@@ -42,10 +46,21 @@ const Voting = ({ players, myPlayerId, hints, onVote, hasVoted }) => {
                     }`}
                   >
                     {selectedId === p.id && (
-                       <div className="absolute top-3 right-3 md:top-4 md:right-4 w-6 h-6 md:w-8 md:h-8 bg-blue-500 rounded-full flex items-center justify-center animate-fade-in shadow-lg">
+                       <div className="absolute top-3 right-3 md:top-4 md:right-4 w-6 h-6 md:w-8 md:h-8 bg-blue-500 rounded-full flex items-center justify-center animate-fade-in shadow-lg z-20">
                          <svg className="w-4 h-4 md:w-5 md:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M5 13l4 4L19 7"></path></svg>
                        </div>
                     )}
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        sounds.click(); 
+                        setHistoryPlayerId(p.id); 
+                      }}
+                      className="absolute top-3 left-3 md:top-4 md:left-4 p-2 bg-white/10 hover:bg-white/20 rounded-lg border border-white/5 transition-all text-slate-400 hover:text-white z-20"
+                      title="View Previous Hints"
+                    >
+                      <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </button>
                     <div className="flex items-center gap-3 md:gap-4 mb-3 md:mb-4">
                       <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border-2 shadow-inner transition-colors ${selectedId === p.id ? 'bg-blue-500 border-blue-400' : 'bg-slate-800 border-slate-700'}`}>
                          <span className="text-base md:text-xl font-black text-white">{p.name?.substring(0, 2).toUpperCase() || "??"}</span>
@@ -86,6 +101,56 @@ const Voting = ({ players, myPlayerId, hints, onVote, hasVoted }) => {
               <div className="w-3 h-3 md:w-4 md:h-4 bg-blue-500 rounded-full animate-bounce shadow-[0_0_15px_rgba(59,130,246,0.8)] [animation-delay:-0.3s]"></div>
               <div className="w-3 h-3 md:w-4 md:h-4 bg-teal-500 rounded-full animate-bounce shadow-[0_0_15px_rgba(45,212,191,0.8)] [animation-delay:-0.15s]"></div>
               <div className="w-3 h-3 md:w-4 md:h-4 bg-blue-500 rounded-full animate-bounce shadow-[0_0_15px_rgba(59,130,246,0.8)]"></div>
+            </div>
+          </div>
+        )}
+
+        {/* History Modal */}
+        {historyPlayerId && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm animate-fade-in" onClick={() => setHistoryPlayerId(null)}></div>
+            <div className="relative w-full max-w-md bg-slate-900 border border-white/10 rounded-3xl shadow-3xl overflow-hidden animate-zoom-in">
+              <div className="p-6 md:p-8 bg-gradient-to-b from-white/5 to-transparent border-b border-white/5 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center">
+                    <span className="text-xl font-black text-blue-400">{historyPlayer?.name?.substring(0, 2).toUpperCase() || "??"}</span>
+                  </div>
+                  <div>
+                    <h3 className="text-xl md:text-2xl font-black text-white leading-none mb-1">{historyPlayer?.name || "Player"}'s History</h3>
+                    <span className="text-[10px] uppercase font-black tracking-widest text-slate-500">Hint Progression</span>
+                  </div>
+                </div>
+                <button onClick={() => setHistoryPlayerId(null)} className="p-2 bg-white/5 hover:bg-white/10 rounded-xl transition-all active:scale-95 text-slate-400">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+              </div>
+
+              <div className="p-6 md:p-8 flex flex-col gap-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                {playerHints.length > 0 ? (
+                  playerHints.map((h, idx) => (
+                    <div key={idx} className="bg-white/5 p-4 rounded-2xl border border-white/5 flex flex-col gap-1 transition-all hover:bg-white/10 group">
+                      <span className="text-[10px] uppercase font-black tracking-widest text-blue-400/70 group-hover:text-blue-400 transition-colors">Round {idx + 1}</span>
+                      <p className="text-lg md:text-xl font-bold text-slate-200 capitalize italic">"{h.hint}"</p>
+                    </div>
+                  ))
+                ) : (
+                  <div className="py-12 flex flex-col items-center justify-center text-center">
+                    <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mb-4 text-slate-600 border border-white/5">
+                       <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </div>
+                    <p className="text-slate-400 font-bold italic text-lg uppercase tracking-tight">No words yet</p>
+                  </div>
+                )}
+              </div>
+              
+              <div className="p-6 bg-slate-950/60 border-t border-white/5">
+                <button 
+                  onClick={() => setHistoryPlayerId(null)}
+                  className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-white font-black uppercase tracking-widest rounded-2xl transition-all active:scale-95 border-b-4 border-black/20"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         )}

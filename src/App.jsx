@@ -40,6 +40,8 @@ function App() {
   const [totalVotes, setTotalVotes] = useState(0);
   const [pointGains, setPointGains] = useState({});
   const [gameState, setGameState] = useState('waiting');
+  const [roundEnded, setRoundEnded] = useState(false);
+  const [votingPhase, setVotingPhase] = useState(false);
 
   // Handle session persistence + Reconnect rejoining
   useEffect(() => {
@@ -114,8 +116,10 @@ function App() {
       }
     });
 
-    socket.on('update_game_state', ({ gameState: gs, currentTurnIndex, hints, votes }) => {
+    socket.on('update_game_state', ({ gameState: gs, currentTurnIndex, hints, votes, roundEnded: re, votingPhase: vp }) => {
       setGameState(gs);
+      if (re !== undefined) setRoundEnded(re);
+      if (vp !== undefined) setVotingPhase(vp);
       setTurnIndex(prev => {
         if (prev !== currentTurnIndex) sounds.turn();
         return currentTurnIndex;
@@ -244,6 +248,7 @@ function App() {
       <Header
         onExitRoom={handleExitRoom}
         inRoom={['room', 'game', 'voting', 'results'].includes(screen)}
+        isGameActive={gameState !== 'waiting'}
       />
 
       {screen === 'landing' && <Landing onStart={handleStartFromLanding} />}
@@ -302,6 +307,7 @@ function App() {
           topVoteCount={topVoteCount}
           totalVotes={totalVotes}
           onNextRound={handleStartGame}
+          roundEnded={roundEnded}
         />
       )}
 
