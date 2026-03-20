@@ -66,7 +66,166 @@ const getRoomSyncState = (room) => ({
   turnStartTime: room.turnStartTime
 });
 
-const rooms = {};
+const getPlayingPlayers = (roomCode) => {
+  if (!rooms[roomCode]) return [];
+  return rooms[roomCode].players.filter(p => p.isPlayingThisRound);
+};
+
+const handleBotTurn = (io, roomCode) => {
+  const room = rooms[roomCode];
+  if (!room || room.gameState !== 'playing') return;
+  
+  const playingPlayers = getPlayingPlayers(roomCode);
+  const turnPlayer = room.players[room.currentTurnIndex];
+  
+  if (turnPlayer && turnPlayer.isBot && turnPlayer.isPlayingThisRound) {
+    setTimeout(() => {
+      if (!rooms[roomCode] || rooms[roomCode].gameState !== 'playing') return;
+      const botHints = ['Cool', 'Good', 'Big', 'Small', 'Heavy', 'Light', 'Red', 'Blue'];
+      const h = botHints[Math.floor(Math.random() * botHints.length)];
+      rooms[roomCode].hints.push({ playerId: turnPlayer.id, hint: h });
+      
+      if (rooms[roomCode].hints.length % playingPlayers.length === 0) {
+        rooms[roomCode].currentTurnIndex = 0;
+        rooms[roomCode].gameState = 'round_complete';
+      }
+      
+      while(rooms[roomCode].players[rooms[roomCode].currentTurnIndex] && !rooms[roomCode].players[rooms[roomCode].currentTurnIndex].isPlayingThisRound) {
+        rooms[roomCode].currentTurnIndex++;
+        if (rooms[roomCode].currentTurnIndex >= rooms[roomCode].players.length) {
+          rooms[roomCode].currentTurnIndex = 0;
+        }
+      }
+
+      resetTurnTimer(io, roomCode);
+      io.to(roomCode).emit('update_game_state', getRoomSyncState(rooms[roomCode]));
+      handleBotTurn(io, roomCode);
+    }, 1500);
+  } else if (turnPlayer && !turnPlayer.isPlayingThisRound) {
+    rooms[roomCode].currentTurnIndex++;
+    handleBotTurn(io, roomCode);
+  }
+};
+
+const handleBotVotes = (io, roomCode) => {
+  const room = rooms[roomCode];
+  if (!room || room.gameState !== 'voting') return;
+  const playingPlayers = getPlayingPlayers(roomCode);
+
+  setTimeout(() => {
+    let updated = false;
+    playingPlayers.forEach(p => {
+      if (p.isBot && !room.votes[p.id]) {
+        const others = playingPlayers.filter(pl => pl.id !== p.id);
+        room.votes[p.id] = others[Math.floor(Math.random() * others.length)].id;
+        updated = true;
+      }
+    });
+    if (updated) {
+      const maskedVotes = { ...room.votes };
+      io.to(roomCode).emit('update_game_state', {
+        gameState: room.gameState,
+        currentTurnIndex: room.currentTurnIndex,
+        hints: room.hints,
+        votes: maskedVotes,
+        roundEnded: room.roundEnded,
+        votingPhase: room.votingPhase
+      });
+      checkVotingComplete(io, roomCode);
+    }
+  }, 2000);
+};
+
+const checkVotingComplete = (io, roomCode) => {
+  const room = rooms[roomCode];
+  if (!room || room.gameState !== 'voting') return;
+  const playingPlayers = getPlayingPlayers(roomCode);
+  if (Object.keys(room.votes).length === playingPlayers.length) {
+    finishRound(io, roomCode);
+  }
+};
+
+const finishRound = (io, roomCode) => {
+  const room = rooms[roomCode];
+  if (!room) return;
+  const playingPlayers = getPlayingPlayers(roomCode);
+  const impostor = playingPlayers.find(p => p.isImpostor);
+  
+  const totalVotes = Object.values(room.votes).length;
+  const voteCounts = {};
+  Object.values(room.votes).forEach(vid => {
+    voteCounts[vid] = (voteCounts[vid] || 0) + 1;
+  });
+  
+  let maxV = 0;
+  let votedOutIds = [];
+  Object.entries(voteCounts).forEach(([vid, count]) => {
+    if (count > maxV) {
+      maxV = count;
+      votedOutIds = [vid];
+    } else if (count === maxV) {
+      votedOutIds.push(vid);
+    }
+  });
+
+  const hasMajority = maxV > totalVotes / 2;
+  const impostorVotes = impostor ? (voteCounts[impostor.id] || 0) : 0;
+  const impostorVotedOut = impostor 
+    ? (hasMajority && votedOutIds.length === 1 && votedOutIds.includes(impostor.id)) 
+    : false;
+  const isTie = !impostorVotedOut && impostorVotes > 0;
+  const pointGains = {};
+
+  if (impostor) {
+    const correctVoters = playingPlayers.filter(p => !p.isImpostor && room.votes[p.id] === impostor.id);
+    const incorrectVoters = playingPlayers.filter(p => !p.isImpostor && room.votes[p.id] !== impostor.id);
+    const allVotedCorrectly = (incorrectVoters.length === 0);
+
+    if (impostorVotedOut) {
+      if (allVotedCorrectly) {
+        correctVoters.forEach(voter => {
+          voter.score += 20;
+          pointGains[voter.id] = { points: 20, reason: "Unanimous!" };
+        });
+      } else {
+        correctVoters.forEach(voter => {
+          voter.score += 20;
+          pointGains[voter.id] = { points: 20, reason: "Voted Correctly" };
+        });
+        impostor.score += 6;
+        pointGains[impostor.id] = { points: 6, reason: "Deceived Some" };
+      }
+    } else {
+      impostor.score += 20;
+      pointGains[impostor.id] = { points: 20, reason: "Undetected!" };
+    }
+  }
+
+  room.gameState = 'results';
+  room.roundEnded = true;
+  room.votingPhase = false;
+  room.lastResults = {
+    impostorId: impostor ? impostor.id : null,
+    word: room.word,
+    votes: { ...room.votes },
+    pointGains: { ...pointGains },
+    isTie,
+    hasMajority,
+    topVoteCount: maxV,
+    totalVotes
+  };
+  
+  io.to(roomCode).emit('update_game_state', {
+    gameState: room.gameState,
+    currentTurnIndex: room.currentTurnIndex,
+    hints: room.hints,
+    votes: room.votes,
+    roundEnded: room.roundEnded,
+    votingPhase: room.votingPhase
+  });
+  io.to(roomCode).emit('show_results', room.lastResults);
+  io.to(roomCode).emit('update_players', room.players);
+};
 
 const handleTimerExpiry = (io, roomCode) => {
   const room = rooms[roomCode];
@@ -267,7 +426,7 @@ io.on('connection', (socket) => {
         room.votingPhase = true;
         room.roundEnded = false;
         io.to(roomCode).emit('start_voting');
-        handleBotVotes(roomCode);
+        handleBotVotes(io, roomCode);
       }
     }
   });
@@ -338,87 +497,8 @@ io.on('connection', (socket) => {
       handleBotTurn(io, roomCode);
     }
   });
-
-  const getPlayingPlayers = (roomCode) => {
-     if (!rooms[roomCode]) return [];
-     return rooms[roomCode].players.filter(p => p.isPlayingThisRound);
-  };
-
-  const handleBotTurn = (io, roomCode) => {
-      const room = rooms[roomCode];
-      if (!room || room.gameState !== 'playing') return;
-      
-      const playingPlayers = getPlayingPlayers(roomCode);
-      const turnPlayer = room.players[room.currentTurnIndex];
-      
-      if (turnPlayer && turnPlayer.isBot && turnPlayer.isPlayingThisRound) {
-          setTimeout(() => {
-              if (rooms[roomCode].gameState !== 'playing') return;
-              const botHints = ['Cool', 'Good', 'Big', 'Small', 'Heavy', 'Light', 'Red', 'Blue'];
-              const h = botHints[Math.floor(Math.random() * botHints.length)];
-              rooms[roomCode].hints.push({ playerId: turnPlayer.id, hint: h });
-              if (rooms[roomCode].hints.length % playingPlayers.length === 0) {
-                  // End of a round
-                  rooms[roomCode].currentTurnIndex = 0;
-                  rooms[roomCode].gameState = 'round_complete';
-                  console.log(`Round ${rooms[roomCode].hints.length / playingPlayers.length} finished in ${roomCode}. Waiting for next hint or voting...`);
-              }
-              
-              // Find next playing player (skipping spectators)
-              while(rooms[roomCode].players[rooms[roomCode].currentTurnIndex] && !rooms[roomCode].players[rooms[roomCode].currentTurnIndex].isPlayingThisRound) {
-                  rooms[roomCode].currentTurnIndex++;
-                  if (rooms[roomCode].currentTurnIndex >= rooms[roomCode].players.length) {
-                      rooms[roomCode].currentTurnIndex = 0;
-                  }
-              }
-
-          resetTurnTimer(io, roomCode);
-          io.to(roomCode).emit('update_game_state', getRoomSyncState(rooms[roomCode]));
-          handleBotTurn(io, roomCode);
-      }, 1500);
-  } else if (turnPlayer && !turnPlayer.isPlayingThisRound) {
-      // Skip spectator in turn order (should not happen since index goes up to playing length, 
-      // but just in case, advance)
-      rooms[roomCode].currentTurnIndex++;
-      handleBotTurn(io, roomCode);
-  }
-};
-  
-  const handleBotVotes = (io, roomCode) => {
-      const room = rooms[roomCode];
-      if (!room || room.gameState !== 'voting') return;
-      const playingPlayers = getPlayingPlayers(roomCode);
-
-      setTimeout(() => {
-          let updated = false;
-          playingPlayers.forEach(p => {
-              if (p.isBot && !room.votes[p.id]) {
-                  const others = playingPlayers.filter(pl => pl.id !== p.id);
-                  room.votes[p.id] = others[Math.floor(Math.random() * others.length)].id;
-                  updated = true;
-              }
-          });
-          if (updated) {
-              // Hide votes from players until results
-              const maskedVotes = { ...room.votes };
-              
-              io.to(roomCode).emit('update_game_state', {
-                  gameState: room.gameState,
-                  currentTurnIndex: room.currentTurnIndex,
-                  hints: room.hints,
-                  votes: maskedVotes,
-                  roundEnded: room.roundEnded,
-                  votingPhase: room.votingPhase
-              });
-              checkVotingComplete(roomCode);
-          }
-      }, 2000);
-  };
-
   socket.on('submit_hint', ({ roomCode, hint }) => {
     const room = rooms[roomCode];
-    const playingPlayers = getPlayingPlayers(roomCode);
-    
     if (room && room.gameState === 'playing') {
       const currentPlayer = room.players[room.currentTurnIndex];
       if (currentPlayer && currentPlayer.id === socket.id && currentPlayer.isPlayingThisRound) {
@@ -455,15 +535,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  const checkVotingComplete = (roomCode) => {
-      const room = rooms[roomCode];
-      if (!room || room.gameState !== 'voting') return;
-      const playingPlayers = getPlayingPlayers(roomCode);
-      if (Object.keys(room.votes).length === playingPlayers.length) {
-          finishRound(roomCode);
-      }
-  };
-
   socket.on('submit_vote', ({ roomCode, votedId }) => {
     const room = rooms[roomCode];
     const player = room?.players.find(p => p.id === socket.id);
@@ -475,105 +546,10 @@ io.on('connection', (socket) => {
          hints: room.hints,
          votes: room.votes
       });
-      checkVotingComplete(roomCode);
+      checkVotingComplete(io, roomCode);
     }
   });
 
-  const finishRound = (roomCode) => {
-      const room = rooms[roomCode];
-      const playingPlayers = getPlayingPlayers(roomCode);
-      const impostor = playingPlayers.find(p => p.isImpostor);
-      
-      const totalVotes = Object.values(room.votes).length;
-      const voteCounts = {};
-      Object.values(room.votes).forEach(vid => {
-         voteCounts[vid] = (voteCounts[vid] || 0) + 1;
-      });
-      
-      let maxV = 0;
-      let votedOutIds = [];
-      Object.entries(voteCounts).forEach(([vid, count]) => {
-        if (count > maxV) {
-          maxV = count;
-          votedOutIds = [vid];
-        } else if (count === maxV) {
-          votedOutIds.push(vid);
-        }
-      });
-
-      // Strict majority required: must have MORE than half votes AND no tie
-      const hasMajority = maxV > totalVotes / 2;
-      const impostorVotes = impostor ? (voteCounts[impostor.id] || 0) : 0;
-      
-      // Impostor voted out ONLY if they got a strict majority and it's not a tie
-      const impostorVotedOut = impostor 
-        ? (hasMajority && votedOutIds.length === 1 && votedOutIds.includes(impostor.id)) 
-        : false;
-      
-      // User's specific rules:
-      // 1. No one votes for impostor -> Impostor won
-      // 2. Some votes but no majority -> Tie
-      const isTie = !impostorVotedOut && impostorVotes > 0;
-      
-      const pointGains = {}; // { playerId: { points: number, reason: string } }
-
-      // SCORING LOGIC - New Nuanced System
-      if (impostor) {
-        const correctVoters = playingPlayers.filter(p => !p.isImpostor && room.votes[p.id] === impostor.id);
-        const incorrectVoters = playingPlayers.filter(p => !p.isImpostor && room.votes[p.id] !== impostor.id);
-        const allVotedCorrectly = (incorrectVoters.length === 0);
-
-        if (impostorVotedOut) {
-          if (allVotedCorrectly) {
-            // CASE 1: ALL players vote the impostor correctly
-            correctVoters.forEach(voter => {
-              voter.score += 20;
-              pointGains[voter.id] = { points: 20, reason: "Unanimous!" };
-            });
-            // Impostor gets 0
-          } else {
-            // CASE 2: Impostor is correctly identified BUT not unanimously
-            correctVoters.forEach(voter => {
-              voter.score += 20;
-              pointGains[voter.id] = { points: 20, reason: "Voted Correctly" };
-            });
-            // incorrectVoters get 0 points
-            impostor.score += 6; // SMALL points (30% of 20)
-            pointGains[impostor.id] = { points: 6, reason: "Deceived Some" };
-          }
-        } else {
-          // CASE 3: Impostor is NOT caught
-          impostor.score += 20;
-          pointGains[impostor.id] = { points: 20, reason: "Undetected!" };
-          // All other players receive 0 points
-        }
-      }
-
-      room.gameState = 'results';
-      room.roundEnded = true;
-      room.votingPhase = false;
-      room.lastResults = {
-        impostorId: impostor ? impostor.id : null,
-        word: room.word,
-        votes: { ...room.votes },
-        pointGains: { ...pointGains },
-        isTie,
-        hasMajority,
-        topVoteCount: maxV,
-        totalVotes
-      };
-      
-      io.to(roomCode).emit('update_game_state', {
-         gameState: room.gameState,
-         currentTurnIndex: room.currentTurnIndex,
-         hints: room.hints,
-         votes: room.votes,
-         roundEnded: room.roundEnded,
-         votingPhase: room.votingPhase
-      });
-      io.to(roomCode).emit('show_results', room.lastResults);
-      io.to(roomCode).emit('update_players', room.players);
-  };
 
   socket.on('leave_room', (roomCode) => {
     const room = rooms[roomCode];

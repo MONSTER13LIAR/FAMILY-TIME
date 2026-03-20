@@ -113,9 +113,7 @@ function App() {
 
     socket.on('assign_role', ({ word, isImpostor }) => {
       setWord(word);
-      if (isImpostor) {
-        setImpostorId(socket.id);
-      }
+      setImpostorId(isImpostor ? socket.id : null);
     });
 
     socket.on('update_game_state', ({ gameState: gs, currentTurnIndex, hints, votes, roundEnded: re, votingPhase: vp, timerEnabled: te, turnStartTime: tst }) => {
