@@ -55,14 +55,78 @@ const createPlayer = (id, name, isHost = false) => ({
   isDisconnected: false
 });
 
+const getRoomSyncState = (room) => ({
+  gameState: room.gameState,
+  currentTurnIndex: room.currentTurnIndex,
+  hints: room.hints,
+  votes: room.votes,
+  roundEnded: room.roundEnded,
+  votingPhase: room.votingPhase,
+  timerEnabled: room.timerEnabled,
+  turnStartTime: room.turnStartTime
+});
+
+const rooms = {};
+
+const handleTimerExpiry = (io, roomCode) => {
+  const room = rooms[roomCode];
+  if (!room || room.gameState !== 'playing') return;
+
+  const currentPlayer = room.players[room.currentTurnIndex];
+  if (currentPlayer && currentPlayer.isPlayingThisRound) {
+    currentPlayer.score -= 2; // Part 4: Failure Case
+    
+    // Automatically end their turn
+    room.currentTurnIndex++;
+    if (room.currentTurnIndex >= room.players.length) {
+      room.currentTurnIndex = 0;
+      room.gameState = 'round_complete';
+    }
+
+    while(room.players[room.currentTurnIndex] && !room.players[room.currentTurnIndex].isPlayingThisRound) {
+      room.currentTurnIndex++;
+      if (room.currentTurnIndex >= room.players.length) {
+        room.currentTurnIndex = 0;
+        room.gameState = 'round_complete';
+      }
+    }
+    
+    io.to(roomCode).emit('update_game_state', getRoomSyncState(room));
+    io.to(roomCode).emit('update_players', room.players);
+    
+    resetTurnTimer(io, roomCode);
+    handleBotTurn(io, roomCode);
+  }
+};
+
+const resetTurnTimer = (io, roomCode) => {
+  const room = rooms[roomCode];
+  if (!room) return;
+  
+  if (room.turnTimer) {
+    clearTimeout(room.turnTimer);
+    room.turnTimer = null;
+  }
+
+  if (room.timerEnabled && room.gameState === 'playing') {
+    room.turnStartTime = Date.now();
+    room.turnTimer = setTimeout(() => {
+      handleTimerExpiry(io, roomCode);
+    }, 20000);
+  } else {
+    room.turnStartTime = null;
+  }
+};
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  socket.on('create_room', ({ name, maxPlayers }) => {
+  socket.on('create_room', ({ name, maxPlayers, enableTimer }) => {
     const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     rooms[roomCode] = {
       roomCode,
       maxPlayers: maxPlayers || 10,
+      timerEnabled: enableTimer || false,
       players: [createPlayer(socket.id, name, true)],
       hostId: socket.id,
       gameState: 'waiting',
@@ -72,8 +136,10 @@ io.on('connection', (socket) => {
       currentTurnIndex: 0,
       hints: [],
       votes: {},
-      roundEnded: false, // Part 1: State flag
-      votingPhase: false // Part 1: State flag
+      roundEnded: false,
+      votingPhase: false,
+      turnStartTime: null,
+      turnTimer: null
     };
     
     socket.join(roomCode);
@@ -267,16 +333,9 @@ io.on('connection', (socket) => {
         }
       });
       
-      io.to(roomCode).emit('update_game_state', {
-         gameState: room.gameState,
-         currentTurnIndex: room.currentTurnIndex,
-         hints: room.hints,
-         votes: room.votes,
-         roundEnded: room.roundEnded,
-         votingPhase: room.votingPhase
-      });
-      
-      handleBotTurn(roomCode);
+      resetTurnTimer(io, roomCode);
+      io.to(roomCode).emit('update_game_state', getRoomSyncState(room));
+      handleBotTurn(io, roomCode);
     }
   });
 
@@ -285,7 +344,7 @@ io.on('connection', (socket) => {
      return rooms[roomCode].players.filter(p => p.isPlayingThisRound);
   };
 
-  const handleBotTurn = (roomCode) => {
+  const handleBotTurn = (io, roomCode) => {
       const room = rooms[roomCode];
       if (!room || room.gameState !== 'playing') return;
       
@@ -313,24 +372,19 @@ io.on('connection', (socket) => {
                   }
               }
 
-              io.to(roomCode).emit('update_game_state', {
-                  gameState: rooms[roomCode].gameState,
-                  currentTurnIndex: rooms[roomCode].currentTurnIndex,
-                  hints: rooms[roomCode].hints,
-                  votes: rooms[roomCode].votes
-              });
-              
-              handleBotTurn(roomCode);
-          }, 1500);
-      } else if (turnPlayer && !turnPlayer.isPlayingThisRound) {
-          // Skip spectator in turn order (should not happen since index goes up to playing length, 
-          // but just in case, advance)
-          rooms[roomCode].currentTurnIndex++;
-          handleBotTurn(roomCode);
-      }
-  };
+          resetTurnTimer(io, roomCode);
+          io.to(roomCode).emit('update_game_state', getRoomSyncState(rooms[roomCode]));
+          handleBotTurn(io, roomCode);
+      }, 1500);
+  } else if (turnPlayer && !turnPlayer.isPlayingThisRound) {
+      // Skip spectator in turn order (should not happen since index goes up to playing length, 
+      // but just in case, advance)
+      rooms[roomCode].currentTurnIndex++;
+      handleBotTurn(io, roomCode);
+  }
+};
   
-  const handleBotVotes = (roomCode) => {
+  const handleBotVotes = (io, roomCode) => {
       const room = rooms[roomCode];
       if (!room || room.gameState !== 'voting') return;
       const playingPlayers = getPlayingPlayers(roomCode);
@@ -352,7 +406,9 @@ io.on('connection', (socket) => {
                   gameState: room.gameState,
                   currentTurnIndex: room.currentTurnIndex,
                   hints: room.hints,
-                  votes: maskedVotes
+                  votes: maskedVotes,
+                  roundEnded: room.roundEnded,
+                  votingPhase: room.votingPhase
               });
               checkVotingComplete(roomCode);
           }
@@ -381,17 +437,9 @@ io.on('connection', (socket) => {
            }
         }
         
-        io.to(roomCode).emit('update_game_state', {
-           gameState: room.gameState,
-           currentTurnIndex: room.currentTurnIndex,
-           hints: room.hints,
-           votes: room.votes,
-           roundEnded: room.roundEnded,
-           votingPhase: room.votingPhase
-        });
-
-        // Continue to bot if applicable (now infinite recursion is safe due to timer in handleBotTurn)
-        handleBotTurn(roomCode);
+        resetTurnTimer(io, roomCode);
+        io.to(roomCode).emit('update_game_state', getRoomSyncState(room));
+        handleBotTurn(io, roomCode);
       }
     }
   });
@@ -401,13 +449,9 @@ io.on('connection', (socket) => {
     if (room && room.hostId === socket.id && room.gameState === 'round_complete') {
       room.gameState = 'playing';
       room.currentTurnIndex = 0;
-      io.to(roomCode).emit('update_game_state', {
-         gameState: room.gameState,
-         currentTurnIndex: room.currentTurnIndex,
-         hints: room.hints,
-         votes: room.votes
-      });
-      handleBotTurn(roomCode);
+      resetTurnTimer(io, roomCode);
+      io.to(roomCode).emit('update_game_state', getRoomSyncState(room));
+      handleBotTurn(io, roomCode);
     }
   });
 

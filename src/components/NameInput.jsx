@@ -4,9 +4,13 @@ import { sounds } from '../utils/soundManager';
 const NameInput = ({ isHost, onContinue, onBack }) => {
   const [name, setName] = useState('');
   const [maxPlayers, setMaxPlayers] = useState(10);
+  const [enableTimer, setEnableTimer] = useState(false);
 
   const handleContinue = () => {
-    if (name.trim()) { sounds.click(); onContinue(name.trim(), maxPlayers); }
+    if (name.trim()) { 
+      sounds.click(); 
+      onContinue(name.trim(), { maxPlayers, enableTimer }); 
+    }
   };
   const handleBack = () => { sounds.click(); onBack(); };
 
@@ -37,21 +41,42 @@ const NameInput = ({ isHost, onContinue, onBack }) => {
           />
           
           {isHost && (
-            <div className="flex flex-col items-start w-full bg-white/5 p-4 md:p-5 rounded-2xl border border-white/10 shadow-inner">
-              <label className="text-slate-400 font-black uppercase tracking-widest text-[10px] md:text-xs mb-3 ml-1">MAX PLAYERS: <span className="text-teal-400 text-base md:text-lg">{maxPlayers}</span></label>
-              <input 
-                type="range" 
-                min="3" 
-                max="10" 
-                value={maxPlayers}
-                onChange={(e) => setMaxPlayers(parseInt(e.target.value))}
-                className="w-full accent-teal-400 mb-1"
-              />
-              <div className="flex justify-between w-full text-slate-600 text-[10px] md:text-xs font-black px-1">
-                <span>3</span>
-                <span>10</span>
+            <>
+              <div className="flex flex-col items-start w-full bg-white/5 p-4 md:p-5 rounded-2xl border border-white/10 shadow-inner">
+                <label className="text-slate-400 font-black uppercase tracking-widest text-[10px] md:text-xs mb-3 ml-1">MAX PLAYERS: <span className="text-teal-400 text-base md:text-lg">{maxPlayers}</span></label>
+                <input 
+                  type="range" 
+                  min="3" 
+                  max="10" 
+                  value={maxPlayers}
+                  onChange={(e) => setMaxPlayers(parseInt(e.target.value))}
+                  className="w-full accent-teal-400 mb-1"
+                />
+                <div className="flex justify-between w-full text-slate-600 text-[10px] md:text-xs font-black px-1">
+                  <span>3</span>
+                  <span>10</span>
+                </div>
               </div>
-            </div>
+              
+              <div className="flex flex-col items-stretch w-full bg-white/5 p-4 md:p-5 rounded-2xl border border-white/10 shadow-inner group transition-all hover:bg-white/10">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-slate-400 font-black uppercase tracking-widest text-[10px] md:text-xs ml-1">Enable Turn Timer</span>
+                  <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${enableTimer ? 'bg-teal-500/20 text-teal-400 border border-teal-500/20 animate-pulse' : 'bg-slate-800 text-slate-500 border border-white/5'}`}>
+                    {enableTimer ? '20s ON' : 'OFF'}
+                  </span>
+                </div>
+                <button 
+                  onClick={() => { sounds.click(); setEnableTimer(!enableTimer); }}
+                  className={`w-full h-8 md:h-10 rounded-xl md:rounded-2xl transition-all relative flex items-center px-1.5 ${enableTimer ? 'bg-teal-500/30 ring-2 ring-teal-400/50' : 'bg-slate-900 border border-white/5'}`}
+                >
+                  <div className={`h-5 w-5 md:h-7 md:w-7 rounded-lg md:rounded-xl shadow-lg transition-all transform flex items-center justify-center ${enableTimer ? 'translate-x-full ml-auto bg-teal-400 shadow-teal-500/40' : 'translate-x-0 bg-slate-700 shadow-black/20'}`}>
+                    {enableTimer && (
+                      <svg className="w-3 h-3 md:w-5 md:h-5 text-teal-950 font-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    )}
+                  </div>
+                </button>
+              </div>
+            </>
           )}
 
           <button 

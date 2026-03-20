@@ -42,6 +42,8 @@ function App() {
   const [gameState, setGameState] = useState('waiting');
   const [roundEnded, setRoundEnded] = useState(false);
   const [votingPhase, setVotingPhase] = useState(false);
+  const [timerEnabled, setTimerEnabled] = useState(false);
+  const [turnStartTime, setTurnStartTime] = useState(null);
 
   // Handle session persistence + Reconnect rejoining
   useEffect(() => {
@@ -116,10 +118,12 @@ function App() {
       }
     });
 
-    socket.on('update_game_state', ({ gameState: gs, currentTurnIndex, hints, votes, roundEnded: re, votingPhase: vp }) => {
+    socket.on('update_game_state', ({ gameState: gs, currentTurnIndex, hints, votes, roundEnded: re, votingPhase: vp, timerEnabled: te, turnStartTime: tst }) => {
       setGameState(gs);
       if (re !== undefined) setRoundEnded(re);
       if (vp !== undefined) setVotingPhase(vp);
+      if (te !== undefined) setTimerEnabled(te);
+      if (tst !== undefined) setTurnStartTime(tst);
       setTurnIndex(prev => {
         if (prev !== currentTurnIndex) sounds.turn();
         return currentTurnIndex;
@@ -192,10 +196,11 @@ function App() {
     setScreen('name');
   };
 
-  const handleNameContinue = (name, maxPlayers) => {
+  const handleNameContinue = (name, options) => {
     setPlayerName(name);
     if (isHost) {
-      socket.emit('create_room', { name, maxPlayers });
+      const { maxPlayers, enableTimer } = options;
+      socket.emit('create_room', { name, maxPlayers, enableTimer });
     } else {
       socket.emit('join_room', { code: roomCode, name });
     }
@@ -281,6 +286,8 @@ function App() {
           onProvideHint={handleProvideHint}
           onStartVoting={handleStartVoting}
           onNextRoundHints={handleNextRoundHints}
+          timerEnabled={timerEnabled}
+          turnStartTime={turnStartTime}
         />
       )}
 

@@ -1,8 +1,20 @@
 import React, { useState } from 'react';
 import { sounds } from '../utils/soundManager';
 
-const Game = ({ players, myPlayerId, isHost, word, isImpostor, turnIndex, hints, gameState, onProvideHint, onStartVoting, onNextRoundHints }) => {
+const Game = ({ players, myPlayerId, isHost, word, isImpostor, turnIndex, hints, gameState, onProvideHint, onStartVoting, onNextRoundHints, timerEnabled, turnStartTime }) => {
   const [myHint, setMyHint] = useState('');
+  const [timeLeft, setTimeLeft] = useState(20);
+
+  React.useEffect(() => {
+    if (!timerEnabled || !turnStartTime || gameState !== 'playing') return;
+
+    const interval = setInterval(() => {
+      const remaining = Math.max(0, 20 - Math.floor((Date.now() - turnStartTime) / 1000));
+      setTimeLeft(remaining);
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [timerEnabled, turnStartTime, gameState]);
   
   const currentPlayer = players[turnIndex];
   const isMyTurn = currentPlayer?.id === myPlayerId;
@@ -92,11 +104,47 @@ const Game = ({ players, myPlayerId, isHost, word, isImpostor, turnIndex, hints,
               ) : (
                 <div className="w-full flex flex-col items-center">
                   <div className="mb-6 md:mb-10 relative">
-                    <div className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center border-4 border-blue-500 shadow-[0_0_40px_rgba(59,130,246,0.2)] animate-[float_4s_ease-in-out_infinite] mb-4 md:mb-8 mx-auto overflow-hidden">
-                      <span className="text-3xl md:text-5xl font-black text-white">{currentPlayer?.name?.substring(0, 2).toUpperCase() || "..."}</span>
+                    <div className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center border-4 border-blue-500 shadow-[0_0_40px_rgba(59,130,246,0.2)] animate-[float_4s_ease-in-out_infinite] mb-4 md:mb-8 mx-auto overflow-hidden relative">
+                      <span className="text-3xl md:text-5xl font-black text-white z-10">{currentPlayer?.name?.substring(0, 2).toUpperCase() || "..."}</span>
                       <div className="absolute inset-0 bg-gradient-to-t from-blue-500/10 to-transparent"></div>
+                      
+                      {/* Timer Overlay Ring */}
+                      {timerEnabled && !isRoundComplete && (
+                        <svg className="absolute inset-0 w-full h-full -rotate-90">
+                          <circle
+                            cx="50%"
+                            cy="50%"
+                            r="48%"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="8"
+                            className="text-white/5"
+                          />
+                          <circle
+                            cx="50%"
+                            cy="50%"
+                            r="48%"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="8"
+                            strokeDasharray="301.6"
+                            strokeDashoffset={301.6 - (301.6 * timeLeft) / 20}
+                            className={`transition-all duration-500 ${timeLeft <= 5 ? 'text-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.5)]' : 'text-blue-400'}`}
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      )}
                     </div>
-                    <h3 className="text-2xl md:text-5xl font-black text-white tracking-tight">It's <span className="text-blue-400">{currentPlayer?.name || "Someone's"}</span> Turn</h3>
+
+                    <div className="flex flex-col gap-2">
+                       {timerEnabled && !isRoundComplete && (
+                          <div className={`flex items-center justify-center gap-2 mb-2 animate-fade-in ${timeLeft <= 5 ? 'text-rose-500 scale-110' : 'text-blue-400'} transition-all duration-300`}>
+                             <svg className="w-5 h-5 md:w-6 md:h-6 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                             <span className="text-2xl md:text-4xl font-black tabular-nums">{timeLeft}s</span>
+                          </div>
+                       )}
+                       <h3 className="text-2xl md:text-5xl font-black text-white tracking-tight">It's <span className="text-blue-400">{currentPlayer?.name || "Someone's"}</span> Turn</h3>
+                    </div>
                   </div>
 
                   {isMyTurn ? (
