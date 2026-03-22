@@ -40,7 +40,7 @@ const Landing = ({ onStart }) => {
 
         <footer className="w-full py-8 md:py-12 flex flex-col items-center gap-4 text-slate-500 font-medium">
           <div className="h-px w-8 md:w-12 bg-slate-800"></div>
-          <p className="text-[10px] md:text-xs uppercase tracking-widest text-center px-6">© 2026 Family Time • Built by Monstrolier</p>
+          <p className="text-[10px] md:text-xs uppercase tracking-widest text-center px-6">© 2026 Family Time • Built by MONSTER LIAR</p>
         </footer>
       </div>
   );

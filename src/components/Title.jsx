@@ -7,7 +7,7 @@ const Title = () => {
         Family Time
       </h1>
       <p className="text-xl md:text-2xl text-slate-400 font-medium mt-2 italic opacity-80">
-        by Monstrolier
+        by MONSTER LIAR
       </p>
     </div>
   );

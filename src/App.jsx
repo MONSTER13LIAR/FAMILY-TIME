@@ -295,6 +295,7 @@ function App() {
           myPlayerId={socket.id}
           hints={hints}
           hasVoted={!!votes[socket.id]}
+          votes={votes}
           onVote={handleVote}
         />
       )}

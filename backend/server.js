@@ -140,7 +140,17 @@ const checkVotingComplete = (io, roomCode) => {
   const room = rooms[roomCode];
   if (!room || room.gameState !== 'voting') return;
   const playingPlayers = getPlayingPlayers(roomCode);
-  if (Object.keys(room.votes).length === playingPlayers.length) {
+  const connectedPlaying = playingPlayers.filter(p => !p.isDisconnected);
+  
+  // Count unique votes from currently connected playing players
+  const playerVotes = new Set();
+  playingPlayers.forEach(p => {
+    if (room.votes[p.id]) {
+      playerVotes.add(p.id);
+    }
+  });
+
+  if (playerVotes.size >= connectedPlaying.length && connectedPlaying.length > 0) {
     finishRound(io, roomCode);
   }
 };
@@ -242,7 +252,7 @@ const handleTimerExpiry = (io, roomCode) => {
       room.gameState = 'round_complete';
     }
 
-    while(room.players[room.currentTurnIndex] && !room.players[room.currentTurnIndex].isPlayingThisRound) {
+    while(room.players[room.currentTurnIndex] && (!room.players[room.currentTurnIndex].isPlayingThisRound || room.players[room.currentTurnIndex].isDisconnected)) {
       room.currentTurnIndex++;
       if (room.currentTurnIndex >= room.players.length) {
         room.currentTurnIndex = 0;
@@ -373,10 +383,16 @@ io.on('connection', (socket) => {
     if (room) {
       const player = room.players.find(p => p.name === playerName);
       if (player) {
-        // Update player ID and rejoin room
+        const oldId = player.id;
         player.id = socket.id;
         player.isDisconnected = false;
         socket.join(roomCode);
+        
+        // Transfer vote if they had one
+        if (room.votes[oldId]) {
+          room.votes[socket.id] = room.votes[oldId];
+          delete room.votes[oldId];
+        }
         
         // If there are no other humans, may need to reassign host
         if (room.hostId === player.id || !room.players.some(p => p.id === room.hostId && !p.isBot)) {
@@ -390,12 +406,7 @@ io.on('connection', (socket) => {
         
         if (room.gameState !== 'waiting') {
            socket.emit('game_started');
-           socket.emit('update_game_state', {
-              gameState: room.gameState,
-              currentTurnIndex: room.currentTurnIndex,
-              hints: room.hints,
-              votes: room.votes
-           });
+           socket.emit('update_game_state', getRoomSyncState(room));
            
            if (room.gameState === 'playing' || room.gameState === 'round_complete') {
              socket.emit('assign_role', {
@@ -421,13 +432,11 @@ io.on('connection', (socket) => {
     const playingPlayers = getPlayingPlayers(roomCode);
     
     if (room && room.hostId === socket.id && (room.gameState === 'playing' || room.gameState === 'round_complete')) {
-      if (room.hints.length >= playingPlayers.length) {
-        room.gameState = 'voting';
-        room.votingPhase = true;
-        room.roundEnded = false;
-        io.to(roomCode).emit('start_voting');
-        handleBotVotes(io, roomCode);
-      }
+      room.gameState = 'voting';
+      room.votingPhase = true;
+      room.roundEnded = false;
+      io.to(roomCode).emit('start_voting');
+      handleBotVotes(io, roomCode);
     }
   });
 
@@ -509,7 +518,7 @@ io.on('connection', (socket) => {
            room.gameState = 'round_complete';
         }
 
-        while(room.players[room.currentTurnIndex] && !room.players[room.currentTurnIndex].isPlayingThisRound) {
+        while(room.players[room.currentTurnIndex] && (!room.players[room.currentTurnIndex].isPlayingThisRound || room.players[room.currentTurnIndex].isDisconnected)) {
            room.currentTurnIndex++;
            if (room.currentTurnIndex >= room.players.length) {
              room.currentTurnIndex = 0;
@@ -586,6 +595,32 @@ io.on('connection', (socket) => {
           // In active game, keep them but mark as disconnected
           player.isDisconnected = true;
           io.to(roomCode).emit('update_players', room.players);
+
+          // If it was their turn, advance to next player
+          if (room.gameState === 'playing' && room.currentTurnIndex === playerIndex) {
+            room.currentTurnIndex++;
+            if (room.currentTurnIndex >= room.players.length) {
+              room.currentTurnIndex = 0;
+              room.gameState = 'round_complete';
+            }
+            
+            while(room.players[room.currentTurnIndex] && (!room.players[room.currentTurnIndex].isPlayingThisRound || room.players[room.currentTurnIndex].isDisconnected)) {
+              room.currentTurnIndex++;
+              if (room.currentTurnIndex >= room.players.length) {
+                room.currentTurnIndex = 0;
+                room.gameState = 'round_complete';
+              }
+            }
+
+            resetTurnTimer(io, roomCode);
+            io.to(roomCode).emit('update_game_state', getRoomSyncState(room));
+            handleBotTurn(io, roomCode);
+          }
+          
+          // Also check if voting was pending on their vote
+          if (room.gameState === 'voting') {
+            checkVotingComplete(io, roomCode);
+          }
         }
       }
     }

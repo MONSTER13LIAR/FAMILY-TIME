@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { sounds } from '../utils/soundManager';
 
-const Voting = ({ players, myPlayerId, hints, onVote, hasVoted }) => {
+const Voting = ({ players, myPlayerId, hints, onVote, hasVoted, votes = {} }) => {
   const [selectedId, setSelectedId] = useState(null);
   const [historyPlayerId, setHistoryPlayerId] = useState(null);
+
+  const playingPlayers = players.filter(p => p.isPlayingThisRound && !p.isDisconnected);
+  const pendingPlayers = playingPlayers.filter(p => !votes[p.id]);
 
   const historyPlayer = players.find(p => p.id === historyPlayerId);
   const playerHints = historyPlayer ? hints.filter(h => h.playerId === historyPlayer.id) : [];
@@ -94,10 +97,24 @@ const Voting = ({ players, myPlayerId, hints, onVote, hasVoted }) => {
             <div className="w-24 h-24 md:w-32 md:h-32 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-full flex items-center justify-center mb-6 md:mb-8 shadow-[0_0_50px_rgba(45,212,191,0.5)] border-4 border-white/20 relative z-10 animate-[float_4s_ease-in-out_infinite]">
               <svg className="w-12 h-12 md:w-16 md:h-16 text-white drop-shadow-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M5 13l4 4L19 7"></path></svg>
             </div>
-            <h3 className="text-3xl md:text-5xl font-black text-white mb-4 tracking-tight drop-shadow-lg relative z-10">Vote Locked!</h3>
-            <p className="text-teal-200/80 text-base md:text-xl font-bold bg-teal-950/40 px-6 py-3 md:px-8 md:py-4 rounded-xl md:rounded-[2rem] border border-teal-500/20 relative z-10">Waiting for others to finish...</p>
+            <h3 className="text-3xl md:text-5xl font-black text-white mb-2 tracking-tight drop-shadow-lg relative z-10">Vote Locked!</h3>
+            <p className="text-teal-200/50 text-[10px] md:text-xs uppercase font-black tracking-widest mb-6 relative z-10">Waiting for other players...</p>
             
-            <div className="flex gap-3 md:gap-4 mt-8 md:mt-12 relative z-10 bg-slate-950/80 p-5 md:p-6 rounded-full border border-white/5 shadow-inner">
+            {/* Real-time Pending Players List */}
+            <div className="flex flex-wrap items-center justify-center gap-3 relative z-10 mb-8 max-w-md">
+               {pendingPlayers.length > 0 ? (
+                 pendingPlayers.map(p => (
+                   <div key={p.id} className="px-5 py-3 bg-white/5 border border-white/10 rounded-2xl flex items-center gap-2 animate-pulse transition-all">
+                      <div className="w-2 h-2 rounded-full bg-teal-500"></div>
+                      <span className="text-sm md:text-lg font-black text-slate-300 uppercase tracking-tight">{p.name}</span>
+                   </div>
+                 ))
+               ) : (
+                 <p className="text-teal-400 font-black uppercase tracking-widest">Finishing Round...</p>
+               )}
+            </div>
+            
+            <div className="flex gap-3 md:gap-4 relative z-10 bg-slate-950/80 p-5 md:p-6 rounded-full border border-white/5 shadow-inner">
               <div className="w-3 h-3 md:w-4 md:h-4 bg-blue-500 rounded-full animate-bounce shadow-[0_0_15px_rgba(59,130,246,0.8)] [animation-delay:-0.3s]"></div>
               <div className="w-3 h-3 md:w-4 md:h-4 bg-teal-500 rounded-full animate-bounce shadow-[0_0_15px_rgba(45,212,191,0.8)] [animation-delay:-0.15s]"></div>
               <div className="w-3 h-3 md:w-4 md:h-4 bg-blue-500 rounded-full animate-bounce shadow-[0_0_15px_rgba(59,130,246,0.8)]"></div>

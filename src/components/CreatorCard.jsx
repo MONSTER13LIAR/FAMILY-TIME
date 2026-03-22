@@ -43,7 +43,7 @@ const CreatorCard = () => {
           </div>
 
           <h2 className="text-4xl font-black text-white mb-2 tracking-tight">
-            Monster Liar
+            MONSTER LIAR
           </h2>
           
           <p className="text-slate-400 text-lg mb-10 font-medium">

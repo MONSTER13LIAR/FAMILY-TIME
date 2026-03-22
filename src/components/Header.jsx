@@ -45,7 +45,7 @@ const Header = ({ onExitRoom, inRoom, isGameActive }) => {
           <div className="flex flex-col items-end">
             <span className="text-[8px] md:text-[10px] uppercase tracking-[0.2em] md:tracking-[0.3em] text-slate-500 font-black mb-0.5 leading-none">CREATOR</span>
             <span className="text-xs md:text-base text-white font-black tracking-tight px-2 py-1 bg-white/5 rounded-lg border border-white/5">
-              Monstrolier
+              MONSTER LIAR
             </span>
           </div>
 

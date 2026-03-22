@@ -178,8 +178,7 @@ const Game = ({ players, myPlayerId, isHost, word, isImpostor, turnIndex, hints,
                   )}
 
                   {/* Manual Vote Button for Host at round boundaries */}
-                  {isHost && hints.length > 0 && 
-                   hints.length % (players.filter(p => p.isPlayingThisRound).length || 1) === 0 && (
+                  {isHost && hints.length > 0 && gameState === 'playing' && (
                     <div className="mt-8 md:mt-12 w-full max-w-lg animate-fade-in">
                         <div className="h-px bg-white/10 w-full mb-8"></div>
                         <button 
