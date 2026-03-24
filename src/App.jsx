@@ -44,6 +44,7 @@ function App() {
   const [votingPhase, setVotingPhase] = useState(false);
   const [timerEnabled, setTimerEnabled] = useState(false);
   const [turnStartTime, setTurnStartTime] = useState(null);
+  const [currentRound, setCurrentRound] = useState(1);
 
   // Handle session persistence + Reconnect rejoining
   useEffect(() => {
@@ -116,12 +117,14 @@ function App() {
       setImpostorId(isImpostor ? socket.id : null);
     });
 
-    socket.on('update_game_state', ({ gameState: gs, currentTurnIndex, hints, votes, roundEnded: re, votingPhase: vp, timerEnabled: te, turnStartTime: tst }) => {
+    socket.on('update_game_state', ({ gameState: gs, currentTurnIndex, hints, votes, roundEnded: re, votingPhase: vp, timerEnabled: te, turnStartTime: tst, currentRound: cr }) => {
       setGameState(gs);
       if (re !== undefined) setRoundEnded(re);
       if (vp !== undefined) setVotingPhase(vp);
       if (te !== undefined) setTimerEnabled(te);
       if (tst !== undefined) setTurnStartTime(tst);
+      if (cr !== undefined) setCurrentRound(cr);
+      
       setTurnIndex(prev => {
         if (prev !== currentTurnIndex) sounds.turn();
         return currentTurnIndex;
@@ -219,6 +222,11 @@ function App() {
     sounds.click();
     socket.emit('add_bot', roomCode);
   };
+  
+  const handleRemoveBot = (botId) => {
+    sounds.click();
+    socket.emit('remove_bot', { roomCode, botId });
+  };
 
   const handleStartGame = () => {
     sounds.click();
@@ -268,6 +276,7 @@ function App() {
           onStartGame={handleStartGame}
           onLeave={handleExitRoom}
           onAddBot={handleAddBot}
+          onRemoveBot={handleRemoveBot}
         />
       )}
 
@@ -286,6 +295,7 @@ function App() {
           onNextRoundHints={handleNextRoundHints}
           timerEnabled={timerEnabled}
           turnStartTime={turnStartTime}
+          currentRound={currentRound}
         />
       )}
 
@@ -314,6 +324,7 @@ function App() {
           totalVotes={totalVotes}
           onNextRound={handleStartGame}
           onExitRoom={handleExitRoom}
+          onRemoveBot={isHost ? handleRemoveBot : null}
           roundEnded={roundEnded}
         />
       )}

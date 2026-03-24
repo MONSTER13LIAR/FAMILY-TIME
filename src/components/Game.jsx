@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { sounds } from '../utils/soundManager';
 
-const Game = ({ players, myPlayerId, isHost, word, isImpostor, turnIndex, hints, gameState, onProvideHint, onStartVoting, onNextRoundHints, timerEnabled, turnStartTime }) => {
+const Game = ({ players, myPlayerId, isHost, word, isImpostor, turnIndex, hints, gameState, onProvideHint, onStartVoting, onNextRoundHints, timerEnabled, turnStartTime, currentRound }) => {
   const [myHint, setMyHint] = useState('');
   const [timeLeft, setTimeLeft] = useState(20);
 
@@ -23,7 +23,7 @@ const Game = ({ players, myPlayerId, isHost, word, isImpostor, turnIndex, hints,
   const playingPlayers = players.filter(p => p.isPlayingThisRound) || [];
   const playerCount = playingPlayers.length || 1;
   const safeHintsLength = hints?.length || 0;
-  const currentRoundNum = Math.floor(safeHintsLength / playerCount) + 1;
+  const currentRoundNum = currentRound || 1;
   const lastHintIndexInPrevRound = (currentRoundNum - 1) * playerCount;
 
   const handleSubmit = (e) => {
@@ -210,8 +210,9 @@ const Game = ({ players, myPlayerId, isHost, word, isImpostor, turnIndex, hints,
               ) : (
                 hints.map((hintObj, i) => {
                   const p = players.find(p => p.id === hintObj.playerId);
-                  const showRoundLabel = i % playingPlayers.length === 0;
-                  const roundNumber = Math.floor(i / playingPlayers.length) + 1;
+                  const prevHint = hints[i - 1];
+                  const showRoundLabel = !prevHint || prevHint.round !== hintObj.round;
+                  const roundNumber = hintObj.round;
                   
                   return (
                     <React.Fragment key={i}>

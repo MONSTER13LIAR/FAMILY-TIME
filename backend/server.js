@@ -63,12 +63,29 @@ const getRoomSyncState = (room) => ({
   roundEnded: room.roundEnded,
   votingPhase: room.votingPhase,
   timerEnabled: room.timerEnabled,
-  turnStartTime: room.turnStartTime
+  turnStartTime: room.turnStartTime,
+  currentRound: room.currentRound || 1
 });
 
 const getPlayingPlayers = (roomCode) => {
   if (!rooms[roomCode]) return [];
   return rooms[roomCode].players.filter(p => p.isPlayingThisRound);
+};
+
+const migrateHost = (io, roomCode) => {
+  const room = rooms[roomCode];
+  if (!room) return;
+
+  const currentHost = room.players.find(p => p.id === room.hostId && !p.isDisconnected);
+  if (!currentHost) {
+    // Find first connected human
+    const newHost = room.players.find(p => !p.isBot && !p.isDisconnected);
+    if (newHost) {
+      room.hostId = newHost.id;
+      room.players.forEach(p => p.isHost = (p.id === newHost.id));
+      io.to(roomCode).emit('update_players', room.players);
+    }
+  }
 };
 
 const advanceTurn = (io, roomCode) => {
@@ -138,20 +155,15 @@ const handleBotVotes = (io, roomCode) => {
     playingPlayers.forEach(p => {
       if (p.isBot && !room.votes[p.id]) {
         const others = playingPlayers.filter(pl => pl.id !== p.id);
-        room.votes[p.id] = others[Math.floor(Math.random() * others.length)].id;
-        updated = true;
+        if (others.length > 0) {
+          room.votes[p.id] = others[Math.floor(Math.random() * others.length)].id;
+          updated = true;
+        }
       }
     });
     if (updated) {
       const maskedVotes = { ...room.votes };
-      io.to(roomCode).emit('update_game_state', {
-        gameState: room.gameState,
-        currentTurnIndex: room.currentTurnIndex,
-        hints: room.hints,
-        votes: maskedVotes,
-        roundEnded: room.roundEnded,
-        votingPhase: room.votingPhase
-      });
+      io.to(roomCode).emit('update_game_state', getRoomSyncState(room));
       checkVotingComplete(io, roomCode);
     }
   }, 2000);
@@ -246,14 +258,7 @@ const finishRound = (io, roomCode) => {
     totalVotes
   };
   
-  io.to(roomCode).emit('update_game_state', {
-    gameState: room.gameState,
-    currentTurnIndex: room.currentTurnIndex,
-    hints: room.hints,
-    votes: room.votes,
-    roundEnded: room.roundEnded,
-    votingPhase: room.votingPhase
-  });
+  io.to(roomCode).emit('update_game_state', getRoomSyncState(room));
   io.to(roomCode).emit('show_results', room.lastResults);
   io.to(roomCode).emit('update_players', room.players);
 };
@@ -292,7 +297,11 @@ io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
   socket.on('create_room', ({ name, maxPlayers, enableTimer }) => {
-    const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    let roomCode;
+    do {
+      roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    } while (rooms[roomCode]);
+
     rooms[roomCode] = {
       roomCode,
       maxPlayers: maxPlayers || 10,
@@ -325,6 +334,11 @@ io.on('connection', (socket) => {
         return socket.emit('error', 'Room is full');
       }
 
+      // Check for duplicate names
+      if (room.players.some(p => p.name.toLowerCase() === name.toLowerCase())) {
+        return socket.emit('error', 'That name is already taken in this room. Please choose another.');
+      }
+
       const newPlayer = createPlayer(socket.id, name);
       
       if (room.gameState !== 'waiting' && room.gameState !== 'results') {
@@ -338,12 +352,7 @@ io.on('connection', (socket) => {
 
       if (room.gameState !== 'waiting') {
          socket.emit('game_started');
-         socket.emit('update_game_state', {
-            gameState: room.gameState,
-            currentTurnIndex: room.currentTurnIndex,
-            hints: room.hints,
-            votes: room.votes
-         });
+         socket.emit('update_game_state', getRoomSyncState(room));
          socket.emit('assign_role', { word: '', isImpostor: false });
          if (room.gameState === 'results') {
            const impostor = room.players.find(p => p.isImpostor);
@@ -364,8 +373,8 @@ io.on('connection', (socket) => {
        if (room.players.length >= room.maxPlayers) {
           return socket.emit('error', 'Room is full');
        }
-       const botNames = ['Alex', 'Sam', 'Jordan', 'Taylor', 'Morgan', 'Casey', 'Riley'];
-       const bname = botNames[Math.floor(Math.random() * botNames.length)] + Math.floor(Math.random() * 100);
+       const botNames = ['Alex', 'Sam', 'Jordan', 'Taylor', 'Morgan', 'Casey', 'Riley', 'Jamie', 'Quinn', 'Skyler'];
+       const bname = botNames[Math.floor(Math.random() * botNames.length)] + "#" + Math.floor(Math.random() * 99);
        const botId = 'bot_' + Math.random().toString(36).substring(2, 9);
        
        const newBot = createPlayer(botId, bname);
@@ -379,15 +388,29 @@ io.on('connection', (socket) => {
      }
   });
 
-  socket.on('rejoin_room', ({ roomCode, playerName }) => {
+  socket.on('remove_bot', ({ roomCode, botId }) => {
     const room = rooms[roomCode];
+    if (room && room.hostId === socket.id) {
+      room.players = room.players.filter(p => p.id !== botId);
+      io.to(roomCode).emit('update_players', room.players);
+      
+      if (room.gameState === 'playing' || room.gameState === 'results') {
+        io.to(roomCode).emit('update_game_state', getRoomSyncState(room));
+      }
+    }
+  });
+
+  socket.on('rejoin_room', ({ roomCode, playerName }) => {
+    if (!roomCode || !playerName) return;
+    const code = roomCode.toUpperCase();
+    const room = rooms[code];
     if (room) {
-      const player = room.players.find(p => p.name === playerName);
+      const player = room.players.find(p => p.name.toLowerCase() === playerName.toLowerCase());
       if (player) {
         const oldId = player.id;
         player.id = socket.id;
         player.isDisconnected = false;
-        socket.join(roomCode);
+        socket.join(code);
         
         // Transfer hints to new ID to prevent "Unknown" name display
         room.hints.forEach(h => {
@@ -409,12 +432,11 @@ io.on('connection', (socket) => {
         }
 
         // Sync state back to rejoining player
-        socket.emit('room_joined', { roomCode, isHost: player.isHost, maxPlayers: room.maxPlayers });
-        io.to(roomCode).emit('update_players', room.players);
+        socket.emit('room_joined', { roomCode: code, isHost: player.isHost, maxPlayers: room.maxPlayers });
+        io.to(code).emit('update_players', room.players);
         
         if (room.gameState !== 'waiting') {
-           socket.emit('game_started');
-           io.to(roomCode).emit('update_game_state', getRoomSyncState(room));
+           socket.emit('update_game_state', getRoomSyncState(room));
            
            if (room.gameState === 'playing' || room.gameState === 'round_complete') {
              socket.emit('assign_role', {
@@ -444,6 +466,7 @@ io.on('connection', (socket) => {
       room.votingPhase = true;
       room.roundEnded = false;
       io.to(roomCode).emit('start_voting');
+      io.to(roomCode).emit('update_game_state', getRoomSyncState(room));
       handleBotVotes(io, roomCode);
     }
   });
@@ -468,6 +491,7 @@ io.on('connection', (socket) => {
       room.votingPhase = false;
       room.currentTurnIndex = 0;
       room.hints = [];
+      room.currentRound = 1;
       room.votes = {};
 
       // Preserve host status but shuffle turn order
@@ -519,7 +543,7 @@ io.on('connection', (socket) => {
     if (room && room.gameState === 'playing') {
       const currentPlayer = room.players[room.currentTurnIndex];
       if (currentPlayer && currentPlayer.id === socket.id && currentPlayer.isPlayingThisRound) {
-        room.hints.push({ playerId: socket.id, hint });
+        room.hints.push({ playerId: socket.id, hint, round: room.currentRound || 1 });
         advanceTurn(io, roomCode);
       }
     }
@@ -530,6 +554,7 @@ io.on('connection', (socket) => {
     if (room && room.hostId === socket.id && room.gameState === 'round_complete') {
       room.gameState = 'playing';
       room.currentTurnIndex = 0;
+      room.currentRound = (room.currentRound || 1) + 1;
       resetTurnTimer(io, roomCode);
       io.to(roomCode).emit('update_game_state', getRoomSyncState(room));
       handleBotTurn(io, roomCode);
@@ -541,12 +566,7 @@ io.on('connection', (socket) => {
     const player = room?.players.find(p => p.id === socket.id);
     if (room && room.gameState === 'voting' && player && player.isPlayingThisRound) {
       room.votes[socket.id] = votedId;
-      io.to(roomCode).emit('update_game_state', {
-         gameState: room.gameState,
-         currentTurnIndex: room.currentTurnIndex,
-         hints: room.hints,
-         votes: room.votes
-      });
+      io.to(roomCode).emit('update_game_state', getRoomSyncState(room));
       checkVotingComplete(io, roomCode);
     }
   });
@@ -562,6 +582,8 @@ io.on('connection', (socket) => {
       
       socket.leave(roomCode);
       room.players = room.players.filter(p => p.id !== socket.id);
+      
+      migrateHost(io, roomCode);
       io.to(roomCode).emit('update_players', room.players);
     }
   });
@@ -577,6 +599,8 @@ io.on('connection', (socket) => {
         // Only delete in waiting if it's really the last person
         if (room.gameState === 'waiting') {
           room.players.splice(playerIndex, 1);
+          
+          migrateHost(io, roomCode);
           io.to(roomCode).emit('update_players', room.players);
           
           const remainingHumans = room.players.filter(p => !p.isBot).length;
@@ -587,6 +611,13 @@ io.on('connection', (socket) => {
           // In active game, keep them but mark as disconnected
           player.isDisconnected = true;
           io.to(roomCode).emit('update_players', room.players);
+
+          // Cleanup: If NO humans are left anywhere, delete the room
+          const anyHumansLeft = room.players.some(p => !p.isBot && !p.isDisconnected);
+          if (!anyHumansLeft) {
+            delete rooms[roomCode];
+            return;
+          }
 
           // If it was their turn, advance to next player
           if (room.gameState === 'playing' && room.currentTurnIndex === playerIndex) {

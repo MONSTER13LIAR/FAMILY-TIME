@@ -95,7 +95,11 @@ const Room = ({ roomCode, isHost, players, myPlayerId, maxPlayers, onStartGame, 
           </div>
           
           <div className="relative z-10 w-full">
-            <PlayerList players={players} myPlayerId={myPlayerId} />
+            <PlayerList 
+              players={players} 
+              myPlayerId={myPlayerId} 
+              onRemoveBot={isHost ? onRemoveBot : null} 
+            />
           </div>
         </div>
 

@@ -37,7 +37,7 @@ const Voting = ({ players, myPlayerId, hints, onVote, hasVoted, votes = {} }) =>
           <div className="w-full bg-white/5 backdrop-blur-2xl border border-white/10 rounded-2xl md:rounded-[3rem] p-4 sm:p-6 md:p-10 shadow-2xl flex flex-col relative overflow-hidden">
              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 mb-8 md:mb-12 relative z-10">
               {players.filter(p => p.id !== myPlayerId).map(p => {
-                const hint = hints.find(h => h.playerId === p.id)?.hint;
+                const hint = [...hints].reverse().find(h => h.playerId === p.id)?.hint;
                 return (
                   <button 
                     key={p.id}

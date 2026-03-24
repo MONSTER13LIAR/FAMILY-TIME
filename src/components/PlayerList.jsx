@@ -1,6 +1,6 @@
 import React from 'react';
 
-const PlayerList = ({ players, myPlayerId, highlightId, children }) => {
+const PlayerList = ({ players, myPlayerId, highlightId, onRemoveBot, children }) => {
   const scores = players.map(p => p.score || 0);
   const maxScore = scores.length > 0 ? Math.max(...scores) : 0;
 
@@ -37,7 +37,18 @@ const PlayerList = ({ players, myPlayerId, highlightId, children }) => {
                   <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-500 text-[8px] sm:text-[10px] font-black uppercase tracking-widest rounded-md border border-amber-500/30 shrink-0">Host</span>
                 )}
                 {player.isBot && (
-                  <span className="px-1.5 py-0.5 bg-slate-600/30 text-slate-400 text-[8px] sm:text-[10px] font-black uppercase tracking-widest rounded-md border border-slate-600/50 shrink-0">Bot</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="px-1.5 py-0.5 bg-slate-600/30 text-slate-400 text-[8px] sm:text-[10px] font-black uppercase tracking-widest rounded-md border border-slate-600/50 shrink-0">Bot</span>
+                    {onRemoveBot && (
+                      <button 
+                        onClick={() => onRemoveBot(player.id)}
+                        className="p-1 hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 rounded transition-colors group/remove"
+                        title="Remove Bot"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M6 18L18 6M6 6l12 12"></path></svg>
+                      </button>
+                    )}
+                  </div>
                 )}
                 {player.isPlayingThisRound === false && (
                   <span className="px-1.5 py-0.5 bg-rose-500/20 text-rose-400 text-[8px] sm:text-[10px] font-black uppercase tracking-widest rounded-md border border-rose-500/30 shrink-0">Specs</span>

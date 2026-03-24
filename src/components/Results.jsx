@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import PlayerList from './PlayerList';
 
-const Results = ({ players, impostorId, word, votes, pointGains, isHost, isTie, hasMajority, topVoteCount, totalVotes, onNextRound, onExitRoom, roundEnded }) => {
+const Results = ({ players, impostorId, word, votes, pointGains, isHost, isTie, hasMajority, topVoteCount, totalVotes, onNextRound, onExitRoom, onRemoveBot, roundEnded }) => {
   const impostor = players.find(p => p.id === impostorId);
   
   // Tally votes
@@ -75,7 +75,11 @@ const Results = ({ players, impostorId, word, votes, pointGains, isHost, isTie, 
           </h3>
           
           <div className="relative z-10 w-full mb-8 md:mb-12">
-            <PlayerList players={players} myPlayerId={null}>
+            <PlayerList 
+              players={players} 
+              myPlayerId={null}
+              onRemoveBot={onRemoveBot}
+            >
               {(player) => {
                 const votedId = votes[player.id];
                 const votedFor = votedId ? players.find(p => p.id === votedId)?.name : null;
