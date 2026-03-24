@@ -313,6 +313,7 @@ function App() {
           topVoteCount={topVoteCount}
           totalVotes={totalVotes}
           onNextRound={handleStartGame}
+          onExitRoom={handleExitRoom}
           roundEnded={roundEnded}
         />
       )}

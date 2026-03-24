@@ -71,39 +71,60 @@ const getPlayingPlayers = (roomCode) => {
   return rooms[roomCode].players.filter(p => p.isPlayingThisRound);
 };
 
+const advanceTurn = (io, roomCode) => {
+  const room = rooms[roomCode];
+  if (!room || room.gameState !== 'playing') return;
+
+  const playingPlayers = getPlayingPlayers(roomCode);
+  
+  room.currentTurnIndex++;
+  
+  // Basic boundary check
+  if (room.currentTurnIndex >= room.players.length) {
+    room.currentTurnIndex = 0;
+    room.gameState = 'round_complete';
+  }
+
+  // Skip players who aren't playing or are disconnected
+  while (room.players[room.currentTurnIndex] && 
+         (!room.players[room.currentTurnIndex].isPlayingThisRound || room.players[room.currentTurnIndex].isDisconnected)) {
+    room.currentTurnIndex++;
+    if (room.currentTurnIndex >= room.players.length) {
+      room.currentTurnIndex = 0;
+      room.gameState = 'round_complete';
+      break; 
+    }
+  }
+
+  resetTurnTimer(io, roomCode);
+  io.to(roomCode).emit('update_game_state', getRoomSyncState(room));
+  io.to(roomCode).emit('update_players', room.players); // In case scores or status changed
+  
+  if (room.gameState === 'playing') {
+    handleBotTurn(io, roomCode);
+  }
+};
+
 const handleBotTurn = (io, roomCode) => {
   const room = rooms[roomCode];
   if (!room || room.gameState !== 'playing') return;
   
-  const playingPlayers = getPlayingPlayers(roomCode);
   const turnPlayer = room.players[room.currentTurnIndex];
   
   if (turnPlayer && turnPlayer.isBot && turnPlayer.isPlayingThisRound) {
     setTimeout(() => {
-      if (!rooms[roomCode] || rooms[roomCode].gameState !== 'playing') return;
+      // Re-verify room state after timeout
+      if (!rooms[roomCode] || rooms[roomCode].gameState !== 'playing' || rooms[roomCode].currentTurnIndex !== room.players.indexOf(turnPlayer)) return;
+      
       const botHints = ['Cool', 'Good', 'Big', 'Small', 'Heavy', 'Light', 'Red', 'Blue'];
       const h = botHints[Math.floor(Math.random() * botHints.length)];
       rooms[roomCode].hints.push({ playerId: turnPlayer.id, hint: h });
       
-      if (rooms[roomCode].hints.length % playingPlayers.length === 0) {
-        rooms[roomCode].currentTurnIndex = 0;
-        rooms[roomCode].gameState = 'round_complete';
-      }
-      
-      while(rooms[roomCode].players[rooms[roomCode].currentTurnIndex] && !rooms[roomCode].players[rooms[roomCode].currentTurnIndex].isPlayingThisRound) {
-        rooms[roomCode].currentTurnIndex++;
-        if (rooms[roomCode].currentTurnIndex >= rooms[roomCode].players.length) {
-          rooms[roomCode].currentTurnIndex = 0;
-        }
-      }
-
-      resetTurnTimer(io, roomCode);
-      io.to(roomCode).emit('update_game_state', getRoomSyncState(rooms[roomCode]));
-      handleBotTurn(io, roomCode);
+      advanceTurn(io, roomCode);
     }, 1500);
-  } else if (turnPlayer && !turnPlayer.isPlayingThisRound) {
-    rooms[roomCode].currentTurnIndex++;
-    handleBotTurn(io, roomCode);
+  } else if (turnPlayer && (!turnPlayer.isPlayingThisRound || turnPlayer.isDisconnected)) {
+    // This case should be handled by advanceTurn, but as a safety:
+    advanceTurn(io, roomCode);
   }
 };
 
@@ -243,28 +264,8 @@ const handleTimerExpiry = (io, roomCode) => {
 
   const currentPlayer = room.players[room.currentTurnIndex];
   if (currentPlayer && currentPlayer.isPlayingThisRound) {
-    currentPlayer.score -= 2; // Part 4: Failure Case
-    
-    // Automatically end their turn
-    room.currentTurnIndex++;
-    if (room.currentTurnIndex >= room.players.length) {
-      room.currentTurnIndex = 0;
-      room.gameState = 'round_complete';
-    }
-
-    while(room.players[room.currentTurnIndex] && (!room.players[room.currentTurnIndex].isPlayingThisRound || room.players[room.currentTurnIndex].isDisconnected)) {
-      room.currentTurnIndex++;
-      if (room.currentTurnIndex >= room.players.length) {
-        room.currentTurnIndex = 0;
-        room.gameState = 'round_complete';
-      }
-    }
-    
-    io.to(roomCode).emit('update_game_state', getRoomSyncState(room));
-    io.to(roomCode).emit('update_players', room.players);
-    
-    resetTurnTimer(io, roomCode);
-    handleBotTurn(io, roomCode);
+    currentPlayer.score = Math.max(0, currentPlayer.score - 2); 
+    advanceTurn(io, roomCode);
   }
 };
 
@@ -388,6 +389,13 @@ io.on('connection', (socket) => {
         player.isDisconnected = false;
         socket.join(roomCode);
         
+        // Transfer hints to new ID to prevent "Unknown" name display
+        room.hints.forEach(h => {
+          if (h.playerId === oldId) {
+            h.playerId = socket.id;
+          }
+        });
+
         // Transfer vote if they had one
         if (room.votes[oldId]) {
           room.votes[socket.id] = room.votes[oldId];
@@ -395,7 +403,7 @@ io.on('connection', (socket) => {
         }
         
         // If there are no other humans, may need to reassign host
-        if (room.hostId === player.id || !room.players.some(p => p.id === room.hostId && !p.isBot)) {
+        if (room.hostId === oldId || room.hostId === player.id || !room.players.some(p => p.id === room.hostId && !p.isBot)) {
            room.hostId = socket.id;
            player.isHost = true;
         }
@@ -406,7 +414,7 @@ io.on('connection', (socket) => {
         
         if (room.gameState !== 'waiting') {
            socket.emit('game_started');
-           socket.emit('update_game_state', getRoomSyncState(room));
+           io.to(roomCode).emit('update_game_state', getRoomSyncState(room));
            
            if (room.gameState === 'playing' || room.gameState === 'round_complete') {
              socket.emit('assign_role', {
@@ -512,23 +520,7 @@ io.on('connection', (socket) => {
       const currentPlayer = room.players[room.currentTurnIndex];
       if (currentPlayer && currentPlayer.id === socket.id && currentPlayer.isPlayingThisRound) {
         room.hints.push({ playerId: socket.id, hint });
-        room.currentTurnIndex++;
-        if (room.currentTurnIndex >= room.players.length) {
-           room.currentTurnIndex = 0;
-           room.gameState = 'round_complete';
-        }
-
-        while(room.players[room.currentTurnIndex] && (!room.players[room.currentTurnIndex].isPlayingThisRound || room.players[room.currentTurnIndex].isDisconnected)) {
-           room.currentTurnIndex++;
-           if (room.currentTurnIndex >= room.players.length) {
-             room.currentTurnIndex = 0;
-             room.gameState = 'round_complete';
-           }
-        }
-        
-        resetTurnTimer(io, roomCode);
-        io.to(roomCode).emit('update_game_state', getRoomSyncState(room));
-        handleBotTurn(io, roomCode);
+        advanceTurn(io, roomCode);
       }
     }
   });
@@ -564,7 +556,7 @@ io.on('connection', (socket) => {
     const room = rooms[roomCode];
     if (room) {
       // Requirement 2: No leaving mid-game
-      if (room.gameState !== 'waiting') {
+      if (room.gameState !== 'waiting' && room.gameState !== 'results') {
         return socket.emit('error', 'Cannot leave during an active game session.');
       }
       
@@ -598,23 +590,7 @@ io.on('connection', (socket) => {
 
           // If it was their turn, advance to next player
           if (room.gameState === 'playing' && room.currentTurnIndex === playerIndex) {
-            room.currentTurnIndex++;
-            if (room.currentTurnIndex >= room.players.length) {
-              room.currentTurnIndex = 0;
-              room.gameState = 'round_complete';
-            }
-            
-            while(room.players[room.currentTurnIndex] && (!room.players[room.currentTurnIndex].isPlayingThisRound || room.players[room.currentTurnIndex].isDisconnected)) {
-              room.currentTurnIndex++;
-              if (room.currentTurnIndex >= room.players.length) {
-                room.currentTurnIndex = 0;
-                room.gameState = 'round_complete';
-              }
-            }
-
-            resetTurnTimer(io, roomCode);
-            io.to(roomCode).emit('update_game_state', getRoomSyncState(room));
-            handleBotTurn(io, roomCode);
+            advanceTurn(io, roomCode);
           }
           
           // Also check if voting was pending on their vote

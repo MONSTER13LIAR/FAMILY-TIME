@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import PlayerList from './PlayerList';
 
-const Results = ({ players, impostorId, word, votes, pointGains, isHost, isTie, hasMajority, topVoteCount, totalVotes, onNextRound, roundEnded }) => {
+const Results = ({ players, impostorId, word, votes, pointGains, isHost, isTie, hasMajority, topVoteCount, totalVotes, onNextRound, onExitRoom, roundEnded }) => {
   const impostor = players.find(p => p.id === impostorId);
   
   // Tally votes
@@ -103,7 +103,7 @@ const Results = ({ players, impostorId, word, votes, pointGains, isHost, isTie, 
             </PlayerList>
           </div>
           
-          <div className="mt-4 md:mt-8 pt-6 md:pt-10 border-t border-white/5 flex justify-center w-full max-w-2xl mx-auto relative z-10">
+          <div className="mt-4 md:mt-8 pt-6 md:pt-10 border-t border-white/5 flex flex-col sm:flex-row items-center justify-center gap-4 w-full max-w-2xl mx-auto relative z-10">
             {isHost ? (
                <button 
                  onClick={onNextRound}
@@ -113,10 +113,17 @@ const Results = ({ players, impostorId, word, votes, pointGains, isHost, isTie, 
                  Next Round
                </button>
             ) : (
-               <div className="w-full py-4 md:py-6 px-8 md:px-12 bg-white/5 text-slate-500 font-black uppercase tracking-widest rounded-xl md:rounded-full border border-white/5 text-sm md:text-xl animate-pulse text-center">
+               <div className="w-full sm:flex-1 py-4 md:py-6 px-8 md:px-12 bg-white/5 text-slate-500 font-black uppercase tracking-widest rounded-xl md:rounded-full border border-white/5 text-sm md:text-xl animate-pulse text-center">
                  Waiting for host...
                </div>
             )}
+            
+            <button 
+              onClick={onExitRoom}
+              className="w-full sm:w-auto px-8 md:px-12 py-3 md:py-5 bg-slate-800/50 hover:bg-rose-600/20 text-slate-400 hover:text-rose-400 font-black uppercase tracking-widest rounded-xl md:rounded-full border border-white/10 hover:border-rose-500/50 transition-all duration-300 active:scale-95 text-sm md:text-lg"
+            >
+              Exit Game
+            </button>
           </div>
         </div>
 
