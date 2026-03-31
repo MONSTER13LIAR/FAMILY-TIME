@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import PlayerList from './PlayerList';
 import { sounds } from '../utils/soundManager';
 
-const Room = ({ roomCode, isHost, players, myPlayerId, maxPlayers, onStartGame, onLeave, onAddBot }) => {
+const Room = ({ roomCode, isHost, players, myPlayerId, maxPlayers, onStartGame, onLeave, onAddBot, onRemoveBot }) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {

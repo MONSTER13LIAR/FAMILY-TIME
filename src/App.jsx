@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import Header from './components/Header';
 import BackgroundDecor from './components/BackgroundDecor';
@@ -46,6 +46,11 @@ function App() {
   const [turnStartTime, setTurnStartTime] = useState(null);
   const [currentRound, setCurrentRound] = useState(1);
 
+  const playerNameRef = useRef(playerName);
+  useEffect(() => {
+    playerNameRef.current = playerName;
+  }, [playerName]);
+
   // Handle session persistence + Reconnect rejoining
   useEffect(() => {
     const handleRejoin = () => {
@@ -84,16 +89,9 @@ function App() {
       setScreen('room');
 
       // Save session
-      let savedName = playerName;
-      if (!savedName) {
-        try {
-          savedName = JSON.parse(localStorage.getItem('session') || '{}').playerName;
-        } catch (e) {
-          savedName = null;
-        }
-      }
-      if (savedName) {
-        localStorage.setItem('session', JSON.stringify({ roomCode: joinedCode, playerName: savedName }));
+      const currentName = playerNameRef.current;
+      if (currentName) {
+        localStorage.setItem('session', JSON.stringify({ roomCode: joinedCode, playerName: currentName }));
       }
     });
 
@@ -182,7 +180,7 @@ function App() {
       socket.off('show_results');
       socket.off('error');
     };
-  }, [playerName]); // Re-register if name changes to capture it for localStorage
+  }, []); // Re-register if name changes to capture it for localStorage
 
   const handleStartFromLanding = () => setScreen('lobby');
 
