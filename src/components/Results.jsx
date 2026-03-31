@@ -86,14 +86,22 @@ const Results = ({ players, impostorId, word, votes, pointGains, isHost, isTie, 
                 const gain = pointGains?.[player.id];
                 return (
                   <div className="flex flex-col gap-2">
-                    {gain && (
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1 ${gain.points > 10 ? 'bg-amber-500/20 text-amber-400 border border-amber-500/20' : 'bg-teal-500/20 text-teal-400 border border-teal-500/20'}`}>
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4"></path></svg>
-                          +{gain.points} {gain.reason}
+                    {gain && Array.isArray(gain) && gain.map((g, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1 ${
+                          g.points < 0 
+                            ? 'bg-rose-500/20 text-rose-400 border border-rose-500/20' 
+                            : g.points > 10 
+                              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/20' 
+                              : 'bg-teal-500/20 text-teal-400 border border-teal-500/20'
+                        }`}>
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d={g.points < 0 ? "M20 12H4" : "M12 4v16m8-8H4"}></path>
+                          </svg>
+                          {g.points > 0 ? '+' : ''}{g.points} {g.reason}
                         </span>
                       </div>
-                    )}
+                    ))}
                     {votedFor && (
                       <div className="text-[10px] md:text-xs text-slate-400 font-black bg-slate-950/50 p-2 md:p-3 rounded-xl border border-white/5 uppercase tracking-widest flex items-center gap-2">
                         <span className="shrink-0 opacity-50">Voted for</span>

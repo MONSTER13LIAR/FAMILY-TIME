@@ -228,20 +228,28 @@ const finishRound = (io, roomCode) => {
       if (allVotedCorrectly) {
         correctVoters.forEach(voter => {
           voter.score += 20;
-          pointGains[voter.id] = { points: 20, reason: "Unanimous!" };
+          pointGains[voter.id] = [{ points: 20, reason: "Unanimous!" }];
         });
       } else {
         correctVoters.forEach(voter => {
           voter.score += 20;
-          pointGains[voter.id] = { points: 20, reason: "Voted Correctly" };
+          pointGains[voter.id] = [{ points: 20, reason: "Voted Correctly" }];
         });
         impostor.score += 6;
-        pointGains[impostor.id] = { points: 6, reason: "Deceived Some" };
+        pointGains[impostor.id] = [{ points: 6, reason: "Deceived Some" }];
       }
     } else {
       impostor.score += 20;
-      pointGains[impostor.id] = { points: 20, reason: "Undetected!" };
+      pointGains[impostor.id] = [{ points: 20, reason: "Undetected!" }];
     }
+  }
+
+  // Add penalties to pointGains
+  if (room.penalties) {
+    Object.entries(room.penalties).forEach(([pid, penaltyArray]) => {
+      if (!pointGains[pid]) pointGains[pid] = [];
+      pointGains[pid] = [...pointGains[pid], ...penaltyArray];
+    });
   }
 
   room.gameState = 'results';
@@ -257,6 +265,9 @@ const finishRound = (io, roomCode) => {
     topVoteCount: maxV,
     totalVotes
   };
+
+  // Reset penalties for next time
+  room.penalties = {};
   
   io.to(roomCode).emit('update_game_state', getRoomSyncState(room));
   io.to(roomCode).emit('show_results', room.lastResults);
@@ -270,6 +281,12 @@ const handleTimerExpiry = (io, roomCode) => {
   const currentPlayer = room.players[room.currentTurnIndex];
   if (currentPlayer && currentPlayer.isPlayingThisRound) {
     currentPlayer.score = Math.max(0, currentPlayer.score - 2); 
+    
+    // Track penalty for Results screen
+    if (!room.penalties) room.penalties = {};
+    if (!room.penalties[currentPlayer.id]) room.penalties[currentPlayer.id] = [];
+    room.penalties[currentPlayer.id].push({ points: -2, reason: "Timed Out!" });
+
     advanceTurn(io, roomCode);
   }
 };
@@ -493,6 +510,7 @@ io.on('connection', (socket) => {
       room.hints = [];
       room.currentRound = 1;
       room.votes = {};
+      room.penalties = {};
 
       // Preserve host status but shuffle turn order
       const hostPlayer = room.players.find(p => p.isHost);
